@@ -1,0 +1,30 @@
+[package]
+name = "buddywize-api"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "buddywize-api"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+buddywize-admin.workspace = true
+buddywize-ai.workspace = true
+buddywize-auth.workspace = true
+buddywize-core.workspace = true
+buddywize-courses.workspace = true
+buddywize-recordings.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
+uuid.workspace = true

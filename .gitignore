@@ -1,0 +1,33 @@
+# Rust
+backend/target/
+**/*.rs.bk
+backend/.env
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.metadata
+mobile/ios/Pods/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/**/DerivedData/
+
+# Svelte / Node
+admin/node_modules/
+admin/dist/
+admin/.env
+
+# Python-ish cruft / OS
+.DS_Store
+*.log
+
+# Local env & secrets
+.env
+.env.*
+!.env.example
+
+# Local object storage volume
+.storage/

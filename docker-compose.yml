@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: buddywize
+      POSTGRES_PASSWORD: buddywize_dev
+      POSTGRES_DB: buddywize
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buddywize"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://buddywize:buddywize_dev@postgres:5432/buddywize
+      HOST: 0.0.0.0
+      PORT: "7878"
+      JWT_SECRET: change-me-in-production
+
+      # Object storage. Leave R2_* unset to use the local filesystem at
+      # /data/storage. Set R2_BUCKET + credentials to use Cloudflare R2.
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      STORAGE_DIR: /data/storage
+
+      RUST_LOG: buddywize=debug,tower_http=info
+    ports:
+      - "7878:7878"
+    volumes:
+      - storage:/data/storage
+
+  admin:
+    build:
+      context: ./admin
+    depends_on:
+      - api
+    environment:
+      # Served by the static preview server; the browser calls the API via VITE_API_URL
+      VITE_API_URL: http://localhost:7878/api
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  storage:

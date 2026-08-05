@@ -1,0 +1,16 @@
+[package]
+name = "buddywize-courses"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+buddywize-auth.workspace = true
+buddywize-core.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
