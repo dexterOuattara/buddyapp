@@ -16,7 +16,6 @@ use async_trait::async_trait;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::config::{Builder as S3ConfigBuilder, Region};
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::Client as S3Client;
 use tokio::sync::Mutex;
 
@@ -147,24 +146,40 @@ impl StorageBackend for LocalFsStorage {
 }
 
 /// Cloudflare R2 storage. The endpoint is `https://<account_id>.r2.cloudflarestorage.com`
-/// and the bucket region is `auto`. Multipart uploads are tracked in memory —
-/// `finish_upload` flushes the parts to R2 via `CompleteMultipartUpload`.
+/// and the bucket region is `auto`. Chunks are accumulated in memory and the
+/// assembled file is uploaded with a single `put_object` call when the upload
+/// completes — see [`R2Upload`] for why.
 pub struct R2Storage {
     client: S3Client,
     bucket: String,
-    /// In-progress multipart uploads keyed by the object key. The `R2Upload`
-    /// is created on `create_upload` and removed on `finish_upload`.
+    /// In-flight uploads keyed by the object key. Each entry holds the
+    /// accumulated bytes; entries are inserted on `create_upload` and
+    /// removed on `finish_upload`.
     uploads: Arc<Mutex<HashMap<String, R2Upload>>>,
 }
 
 #[derive(Default)]
 struct R2Upload {
-    /// R2 multipart upload ID. Empty until the first chunk is uploaded.
-    upload_id: String,
-    /// Parts already uploaded, in part-number order.
-    parts: Vec<CompletedPart>,
-    /// Total bytes received so far.
-    offset: u64,
+    /// Bytes received so far, accumulated in memory.
+    ///
+    /// We deliberately use `put_object` (single-shot upload) rather than
+    /// R2's multipart upload because the mobile app sends 256 KB chunks.
+    /// R2 requires each multipart part to be **at least 5 MiB**, so streaming
+    /// small chunks through multipart always fails at `CompleteMultipartUpload`
+    /// time. Buffering in memory and uploading the assembled file as a single
+    /// object is simpler, works for any file < 5 GiB, and matches what the
+    /// mobile client already keeps in its own in-memory chunk buffer.
+    ///
+    /// Memory budget per in-flight upload: file size (capped by the user's
+    /// max recording length). At a 1-hour upper bound at 128 kbps AAC, that's
+    /// ~57 MiB per concurrent upload, which is well within budget.
+    bytes: Vec<u8>,
+}
+
+impl R2Upload {
+    fn offset(&self) -> u64 {
+        self.bytes.len() as u64
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -217,98 +232,62 @@ impl R2Storage {
 #[async_trait]
 impl StorageBackend for R2Storage {
     async fn create_upload(&self, key: &str) -> StorageResult<()> {
-        // Lazy: don't hit R2 until the first chunk. The local entry is what
-        // gates the offset arithmetic.
+        // Initialize an empty in-memory buffer for this upload. The actual
+        // bytes are not sent to R2 until `finish_upload` calls `put_object`.
         let mut uploads = self.uploads.lock().await;
         uploads.entry(key.to_string()).or_default();
         Ok(())
     }
 
     async fn append_chunk(&self, key: &str, chunk: UploadChunk) -> StorageResult<u64> {
-        // We hold the uploads lock for the whole call: uploads on the same
+        // We hold the uploads lock for the whole call. Uploads on the same
         // key are sequential by design (a single client uses one upload
-        // session at a time), and serializing here keeps the offset/state
+        // session at a time), so serializing here keeps the offset/state
         // bookkeeping simple and correct.
         let mut uploads = self.uploads.lock().await;
         let upload = uploads.entry(key.to_string()).or_default();
 
-        if chunk.offset != upload.offset {
-            return Err(LocalFsStorage::offset_mismatch(chunk.offset, upload.offset));
+        if chunk.offset != upload.offset() {
+            return Err(LocalFsStorage::offset_mismatch(chunk.offset, upload.offset()));
         }
 
-        // Lazily create the multipart upload on the first chunk.
-        if upload.upload_id.is_empty() {
-            let resp = self
-                .client
-                .create_multipart_upload()
-                .bucket(&self.bucket)
-                .key(key)
-                .content_type("audio/mp4")
-                .send()
-                .await
-                .map_err(|e| StorageError::Backend(format!("r2 create_multipart_upload: {e}")))?;
-            let upload_id = resp.upload_id().unwrap_or("").to_string();
-            if upload_id.is_empty() {
-                return Err(StorageError::Backend(
-                    "R2 returned an empty upload_id".into(),
-                ));
-            }
-            upload.upload_id = upload_id;
-        }
-
-        let part_number = (upload.parts.len() + 1) as i32;
-        let resp = self
-            .client
-            .upload_part()
-            .bucket(&self.bucket)
-            .key(key)
-            .upload_id(&upload.upload_id)
-            .part_number(part_number)
-            .body(ByteStream::from(chunk.bytes.clone()))
-            .send()
-            .await
-            .map_err(|e| StorageError::Backend(format!("r2 upload_part: {e}")))?;
-
-        let etag = resp.e_tag().unwrap_or("").to_string();
-        upload.parts.push(
-            CompletedPart::builder()
-                .part_number(part_number)
-                .e_tag(etag)
-                .build(),
-        );
-        upload.offset += chunk.bytes.len() as u64;
-        Ok(upload.offset)
+        upload.bytes.extend_from_slice(&chunk.bytes);
+        Ok(upload.offset())
     }
 
     async fn upload_offset(&self, key: &str) -> StorageResult<u64> {
         let uploads = self.uploads.lock().await;
-        Ok(uploads.get(key).map(|u| u.offset).unwrap_or(0))
+        Ok(uploads.get(key).map(|u| u.offset()).unwrap_or(0))
     }
 
     async fn finish_upload(&self, key: &str) -> StorageResult<()> {
-        let mut uploads = self.uploads.lock().await;
-        let upload = uploads
-            .remove(key)
-            .ok_or_else(|| StorageError::NotFound(key.to_string()))?;
+        // Pop the buffer from the in-flight map; release the lock before
+        // hitting R2 so other uploads aren't blocked.
+        let bytes = {
+            let mut uploads = self.uploads.lock().await;
+            let upload = uploads
+                .remove(key)
+                .ok_or_else(|| StorageError::NotFound(key.to_string()))?;
+            upload.bytes
+        };
 
-        // No data was uploaded — nothing to do.
-        if upload.upload_id.is_empty() {
+        // Empty uploads are a no-op.
+        if bytes.is_empty() {
             return Ok(());
         }
 
-        let completed = CompletedMultipartUpload::builder()
-            .set_parts(Some(upload.parts))
-            .build();
-
+        // Single-shot upload. R2 supports up to 5 GiB per PUT; if we ever
+        // need bigger files we'd switch this back to multipart with chunks
+        // assembled locally at the server's required 5 MiB minimum size.
         self.client
-            .complete_multipart_upload()
+            .put_object()
             .bucket(&self.bucket)
             .key(key)
-            .upload_id(&upload.upload_id)
-            .multipart_upload(completed)
+            .content_type("audio/mp4")
+            .body(ByteStream::from(bytes))
             .send()
             .await
-            .map_err(|e| StorageError::Backend(format!("r2 complete_multipart_upload: {e}")))?;
+            .map_err(|e| StorageError::Backend(format!("r2 put_object: {e}")))?;
 
         Ok(())
     }
