@@ -61,6 +61,8 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::list_users,
         buddywize_admin::set_user_role,
         buddywize_admin::list_recordings,
+        buddywize_admin::recording_detail,
+        buddywize_admin::recording_audio,
         buddywize_admin::list_pending_moderation,
         buddywize_admin::decide_summary,
         buddywize_admin::decide_exercises,
@@ -101,6 +103,8 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::AdminUserRow,
         buddywize_admin::SetRoleRequest,
         buddywize_admin::AdminRecordingRow,
+        buddywize_admin::AudioMeta,
+        buddywize_admin::RecordingDetailDto,
         buddywize_admin::PendingItem,
         buddywize_admin::ModerationDecision,
     ))
@@ -177,7 +181,7 @@ async fn main() -> anyhow::Result<()> {
     let auth_state = AuthState { db: db.clone(), jwt };
     let course_state = CourseState { db: db.clone() };
     let recording_state = RecordingState { db: db.clone(), storage: storage.clone(), jobs: jobs_tx };
-    let admin_state = AdminState { db: db.clone() };
+    let admin_state = AdminState { db: db.clone(), storage: storage.clone() };
     let sync_state = sync::SyncState { db: db.clone() };
 
     // Sub-routers each own their state; everything merged below is Router<()>.

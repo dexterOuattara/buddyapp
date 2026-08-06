@@ -1,13 +1,20 @@
 //! Admin-scoped endpoints backing the Svelte admin panel: user listing,
-//! recording/pipeline monitoring, and moderation of AI-generated content.
+//! recording/pipeline monitoring, moderation of AI-generated content, and
+//! per-recording detail (audio stream + transcript + study material).
 //! All routes here are additionally guarded by `require_admin` in the API
 //! gateway.
 
+use std::sync::Arc;
+
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
+use buddywize_core::storage::StorageBackend;
 use buddywize_core::{ApiError, ApiResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -18,6 +25,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AdminState {
     pub db: PgPool,
+    pub storage: Arc<dyn StorageBackend>,
 }
 
 pub fn router(state: AdminState) -> Router {
@@ -25,6 +33,8 @@ pub fn router(state: AdminState) -> Router {
         .route("/admin/users", get(list_users))
         .route("/admin/users/:id/role", post(set_user_role))
         .route("/admin/recordings", get(list_recordings))
+        .route("/admin/recordings/:id", get(recording_detail))
+        .route("/admin/recordings/:id/audio", get(recording_audio))
         .route("/admin/moderation", get(list_pending_moderation))
         .route("/admin/moderation/summaries/:id", post(decide_summary))
         .route("/admin/moderation/exercises/:id", post(decide_exercises))
@@ -115,6 +125,9 @@ pub struct AdminRecordingRow {
     pub status: String,
     pub error: Option<String>,
     pub duration_secs: Option<i32>,
+    /// Storage key (R2 object key or local file name). The admin uses this
+    /// to fetch the audio bytes for the moderation player.
+    pub storage_path: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -138,7 +151,7 @@ pub async fn list_recordings(
     let limit = q.limit.unwrap_or(100).min(500);
     let rows: Vec<AdminRecordingRow> = if let Some(status) = q.status {
         sqlx::query_as(
-            "SELECT id, user_id, chapter_id, status, error, duration_secs, created_at, updated_at
+            "SELECT id, user_id, chapter_id, status, error, duration_secs, storage_path, created_at, updated_at
                FROM recordings WHERE status = $1 ORDER BY updated_at DESC LIMIT $2",
         )
         .bind(status)
@@ -147,7 +160,7 @@ pub async fn list_recordings(
         .await?
     } else {
         sqlx::query_as(
-            "SELECT id, user_id, chapter_id, status, error, duration_secs, created_at, updated_at
+            "SELECT id, user_id, chapter_id, status, error, duration_secs, storage_path, created_at, updated_at
                FROM recordings ORDER BY updated_at DESC LIMIT $1",
         )
         .bind(limit)
@@ -155,6 +168,212 @@ pub async fn list_recordings(
         .await?
     };
     Ok(Json(rows))
+}
+
+// ----------------------------------------------------------- recording detail
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AudioMeta {
+    /// MIME type derived from the storage key extension.
+    pub mime: String,
+    /// Size in bytes; 0 if unknown.
+    pub size: i64,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
+pub struct TranscriptRow {
+    pub provider: String,
+    pub content: String,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
+pub struct StudySummaryRow {
+    pub id: Uuid,
+    pub status: String,
+    pub content_md: String,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
+pub struct StudyExercisesRow {
+    pub id: Uuid,
+    pub status: String,
+    pub items: serde_json::Value,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
+pub struct StudyQuizzesRow {
+    pub id: Uuid,
+    pub status: String,
+    pub questions: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RecordingDetailDto {
+    pub recording: AdminRecordingRow,
+    pub user_email: Option<String>,
+    pub chapter_title: Option<String>,
+    pub audio: AudioMeta,
+    pub transcript: Option<TranscriptRow>,
+    pub summary: Option<StudySummaryRow>,
+    pub exercises: Option<StudyExercisesRow>,
+    pub quizzes: Option<StudyQuizzesRow>,
+}
+
+async fn load_admin_recording(state: &AdminState, id: Uuid) -> ApiResult<AdminRecordingRow> {
+    sqlx::query_as(
+        "SELECT id, user_id, chapter_id, status, error, duration_secs, storage_path, created_at, updated_at
+           FROM recordings WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(ApiError::NotFound)
+}
+
+/// Full record of a recording: metadata + transcript + study material + audio
+/// metadata. Admin can see content even before it has been moderated.
+#[utoipa::path(
+    get,
+    path = "/api/admin/recordings/{id}",
+    responses((status = 200, description = "Recording detail", body = RecordingDetailDto))
+)]
+pub async fn recording_detail(
+    State(state): State<AdminState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<RecordingDetailDto>> {
+    let rec = load_admin_recording(&state, id).await?;
+
+    let user_email: Option<String> =
+        sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+            .bind(rec.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let chapter_title: Option<String> =
+        sqlx::query_scalar("SELECT title FROM chapters WHERE id = $1")
+            .bind(rec.chapter_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let transcript: Option<TranscriptRow> = sqlx::query_as(
+        "SELECT provider, content FROM transcripts WHERE recording_id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let summary: Option<StudySummaryRow> = sqlx::query_as(
+        "SELECT id, status, content_md FROM summaries
+          WHERE recording_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let exercises: Option<StudyExercisesRow> = sqlx::query_as(
+        "SELECT id, status, items FROM exercises
+          WHERE recording_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let quizzes: Option<StudyQuizzesRow> = sqlx::query_as(
+        "SELECT id, status, questions FROM quizzes
+          WHERE recording_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    // For audio size we read the bytes; for very large files this could be
+    // expensive — the moderation UI only needs the MIME + a working play URL.
+    // We keep size for the UI badge and to surface storage anomalies.
+    let size = match state.storage.read(&storage_path_for_audio(&rec)).await {
+        Ok(bytes) => bytes.len() as i64,
+        Err(_) => 0,
+    };
+    let mime = mime_for_key(&storage_path_for_audio(&rec)).to_string();
+
+    Ok(Json(RecordingDetailDto {
+        recording: rec,
+        user_email,
+        chapter_title,
+        audio: AudioMeta { mime, size },
+        transcript,
+        summary,
+        exercises,
+        quizzes,
+    }))
+}
+
+/// Stream the raw audio bytes. The admin UI fetches this with the Bearer
+/// token and creates a Blob URL for the `<audio>` element.
+#[utoipa::path(
+    get,
+    path = "/api/admin/recordings/{id}/audio",
+    responses(
+        (status = 200, description = "Audio bytes", content_type = "audio/*"),
+        (status = 404, description = "Recording missing or audio unreadable"),
+    )
+)]
+pub async fn recording_audio(
+    State(state): State<AdminState>,
+    Path(id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let rec = load_admin_recording(&state, id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let key = storage_path_for_audio(&rec);
+    let bytes = state
+        .storage
+        .read(&key)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let mime = mime_for_key(&key);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(mime),
+    );
+    headers.insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from(bytes.len() as u64),
+    );
+    // Cache aggressively — admin will replay the same audio while moderating.
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=300"));
+
+    let mut resp = Response::new(Body::from(bytes));
+    *resp.status_mut() = StatusCode::OK;
+    resp.headers_mut().extend(headers);
+    Ok(resp)
+}
+
+/// Map a storage key to a MIME type we can play in the browser.
+fn mime_for_key(key: &str) -> &'static str {
+    let lower = key.to_ascii_lowercase();
+    if lower.ends_with(".m4a") || lower.ends_with(".aac") {
+        "audio/mp4"
+    } else if lower.ends_with(".mp3") {
+        "audio/mpeg"
+    } else if lower.ends_with(".wav") {
+        "audio/wav"
+    } else if lower.ends_with(".ogg") {
+        "audio/ogg"
+    } else if lower.ends_with(".webm") {
+        "audio/webm"
+    } else if lower.ends_with(".flac") {
+        "audio/flac"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn storage_path_for_audio(rec: &AdminRecordingRow) -> String {
+    // The recordings table stores the storage key (R2 path or local filename).
+    // We use the same `read()` entry point as the AI pipeline.
+    rec.storage_path.clone()
 }
 
 // ------------------------------------------------------------------ moderation
@@ -300,4 +519,27 @@ async fn apply_decision(
         return Err(ApiError::NotFound);
     }
     Ok(Json(serde_json::json!({ "id": id, "status": decision })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mime_for_known_audio_extensions() {
+        assert_eq!(mime_for_key("lesson.m4a"), "audio/mp4");
+        assert_eq!(mime_for_key("lesson.AAC"), "audio/mp4");
+        assert_eq!(mime_for_key("song.mp3"), "audio/mpeg");
+        assert_eq!(mime_for_key("noise.wav"), "audio/wav");
+        assert_eq!(mime_for_key("clip.ogg"), "audio/ogg");
+        assert_eq!(mime_for_key("recording.webm"), "audio/webm");
+        assert_eq!(mime_for_key("hi-fi.flac"), "audio/flac");
+    }
+
+    #[test]
+    fn mime_for_unknown_extension_falls_back_to_octet_stream() {
+        assert_eq!(mime_for_key("recording.txt"), "application/octet-stream");
+        assert_eq!(mime_for_key("recording"), "application/octet-stream");
+        assert_eq!(mime_for_key(""), "application/octet-stream");
+    }
 }

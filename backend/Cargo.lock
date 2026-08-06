@@ -707,6 +707,7 @@ dependencies = [
 name = "buddywize-admin"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "buddywize-core",
  "chrono",

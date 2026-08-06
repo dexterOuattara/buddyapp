@@ -116,9 +116,35 @@ export const api = {
   recordings: (status) =>
     request(`/admin/recordings${status ? `?status=${status}` : ''}`),
   moderation: () => request('/admin/moderation'),
+  recordingDetail: (id) => request(`/admin/recordings/${id}`),
   decide: (kind, id, decision) =>
     request(`/admin/moderation/${kind}/${id}`, {
       method: 'POST',
       body: JSON.stringify({ decision }),
     }),
 };
+
+/**
+ * Fetch the raw audio bytes for a recording and turn them into a Blob URL.
+ *
+ * The Bearer token can't be set on `<audio src>`, so we fetch with the
+ * token, wrap the response into a Blob, and hand a Blob URL to the
+ * `<audio>` element. Callers MUST call [revokeBlobUrl] when the URL is
+ * no longer needed (e.g. on row collapse or component unmount) to avoid
+ * leaking memory across the admin session.
+ */
+export async function recordingAudioBlobUrl(id) {
+  const res = await fetch(`${API}/admin/recordings/${id}/audio`, {
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Audio fetch failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+export function revokeBlobUrl(url) {
+  if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+}
