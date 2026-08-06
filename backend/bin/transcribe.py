@@ -43,7 +43,7 @@ def main() -> int:
         print(json.dumps({"error": f"audio file not found: {audio_path}"}), file=sys.stderr)
         return 2
 
-    model_name = os.environ.get("WHISPER_MODEL", "large-v3")
+    model_name = os.environ.get("WHISPER_MODEL", "medium")
     device = os.environ.get("WHISPER_DEVICE", "cpu")
     compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
     beam_size = int(os.environ.get("WHISPER_BEAM_SIZE", "5"))

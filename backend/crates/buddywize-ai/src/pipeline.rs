@@ -77,6 +77,16 @@ impl Pipeline {
         // 1) Speech-to-text.
         let audio = self.storage.read(&rec.storage_path).await?;
         let transcript: Transcript = self.stt.transcribe(&audio).await?;
+        if transcript.text.split_whitespace().count() == 0 {
+            self.set_status(
+                recording_id,
+                "failed",
+                Some("no speech detected — the recording is silent (check your microphone)"),
+            )
+            .await?;
+            tracing::warn!(%recording_id, "pipeline rejected silent recording");
+            return Ok(());
+        }
         sqlx::query(
             "INSERT INTO transcripts (recording_id, provider, content)
              VALUES ($1, $2, $3)

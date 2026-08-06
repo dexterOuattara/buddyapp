@@ -1,5 +1,5 @@
 //! Speech-to-text provider backed by `faster-whisper` (Python) running
-//! `whisper-large-v3` by default.
+//! `whisper-medium` by default.
 //!
 //! The Rust side spawns the Python interpreter as a subprocess per recording,
 //! writes the audio bytes to a temp file, and parses the JSON transcript from
@@ -21,7 +21,7 @@ pub struct WhisperConfig {
     pub python: PathBuf,
     /// Path to the helper script (default: `bin/transcribe.py` shipped with the repo).
     pub script: PathBuf,
-    /// Model name (HuggingFace id, e.g. `large-v3`, `medium`, `small`).
+    /// Model name (HuggingFace id, e.g. `medium`, `large-v3`, `small`).
     pub model: String,
     /// Compute device: `cpu`, `cuda`, or `auto`.
     pub device: String,
@@ -40,7 +40,7 @@ impl WhisperConfig {
         let script = std::env::var("WHISPER_SCRIPT")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("bin/transcribe.py"));
-        let model = std::env::var("WHISPER_MODEL").unwrap_or_else(|_| "large-v3".into());
+        let model = std::env::var("WHISPER_MODEL").unwrap_or_else(|_| "medium".into());
         let device = std::env::var("WHISPER_DEVICE").unwrap_or_else(|_| "cpu".into());
         let compute_type = std::env::var("WHISPER_COMPUTE_TYPE").unwrap_or_else(|_| "int8".into());
         let beam_size = std::env::var("WHISPER_BEAM_SIZE")

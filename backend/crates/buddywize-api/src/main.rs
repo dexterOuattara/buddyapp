@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
     let storage = storage::from_env().await?;
 
     // Speech-to-text provider. `WHISPER_MODEL=disabled` keeps the mock;
-    // any other value (or unset) defaults to `faster-whisper` with `large-v3`.
+    // any other value (or unset) defaults to `faster-whisper` with `medium`.
     let stt: Arc<dyn SttProvider> = match std::env::var("WHISPER_MODEL").as_deref() {
         Ok("disabled") | Ok("mock") | Ok("off") => {
             tracing::info!("using mock STT provider");
