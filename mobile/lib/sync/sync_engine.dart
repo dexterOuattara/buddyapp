@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 
 import '../api/api_client.dart';
+import '../core/config.dart';
 import '../db/app_database.dart';
 
 enum SyncPhase { idle, pushing, pulling, done, offline, error }
@@ -12,7 +13,9 @@ enum SyncPhase { idle, pushing, pulling, done, offline, error }
 /// Reconciles local SQLite with the backend. Runs when connectivity returns,
 /// when the app is foregrounded, on a periodic timer, or on demand.
 class SyncEngine {
-  SyncEngine({required this.db, required this.api});
+  SyncEngine({required this.db, required this.api}) {
+    _timer = Timer.periodic(Config.syncPollInterval, (_) => sync());
+  }
 
   final AppDatabase db;
   final ApiClient api;
@@ -22,10 +25,18 @@ class SyncEngine {
   SyncPhase currentPhase = SyncPhase.idle;
 
   bool _running = false;
+  Timer? _timer;
 
   void _setPhase(SyncPhase p) {
     currentPhase = p;
     _phase.add(p);
+  }
+
+  /// Stops the periodic timer. Called from the provider on app shutdown.
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    _phase.close();
   }
 
   /// Full sync pass: push local changes, then pull remote changes.
@@ -439,8 +450,4 @@ class SyncEngine {
 
   DateTime? _asDate(dynamic v) =>
       v == null ? null : DateTime.tryParse(v.toString());
-
-  void dispose() {
-    _phase.close();
-  }
 }

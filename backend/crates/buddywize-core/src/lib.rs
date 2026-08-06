@@ -43,8 +43,10 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        if matches!(&self, ApiError::Internal(_)) {
-            tracing::error!(error = %self, "request failed");
+        if let ApiError::Internal(err) = &self {
+            // Print the full anyhow chain so the actual failure is visible
+            // in the logs (the `Display` impl only says "internal error").
+            tracing::error!(error = ?err, "request failed");
         }
         let body = serde_json::json!({ "error": self.to_string() });
         (status, Json(body)).into_response()

@@ -26,6 +26,10 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
         _recording = false;
         _activeChapter = null;
       });
+      // Kick a sync right away so the new recording starts uploading without
+      // waiting for the periodic timer (default 45s) or a manual button tap.
+      // ignore: unawaited futures
+      Future.microtask(() => ref.read(syncEngineProvider).sync());
     } else {
       final chapterUuid = await _pickChapter();
       if (chapterUuid == null) return;
