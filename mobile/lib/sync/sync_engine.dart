@@ -250,15 +250,22 @@ class SyncEngine {
     var since = await _cursor('courses');
     final courses = await api.listCourses(since: since);
     await _applyDelta(courses, (item) async {
-      await db.into(db.courses).insertOnConflictUpdate(CoursesCompanion.insert(
-        clientUuid: item['client_uuid'] as String,
-        serverId: Value(item['id'] as String?),
-        title: item['title'] as String,
-        description: Value(item['description'] as String?),
-        deleted: Value(item['deleted_at'] != null),
-        pendingSync: const Value(false),
-        syncVersion: Value(_asInt(item['sync_version'])),
-      ));
+      // InsertMode.insertOrReplace: local rows are keyed by client_uuid in
+      // every query — auto-increment `id` is only an internal Drift handle,
+      // so replacing it on conflict is safe and avoids the need to declare
+      // the conflict target manually.
+      await db.into(db.courses).insert(
+        CoursesCompanion.insert(
+          clientUuid: item['client_uuid'] as String,
+          serverId: Value(item['id'] as String?),
+          title: item['title'] as String,
+          description: Value(item['description'] as String?),
+          deleted: Value(item['deleted_at'] != null),
+          pendingSync: const Value(false),
+          syncVersion: Value(_asInt(item['sync_version'])),
+        ),
+        mode: InsertMode.insertOrReplace,
+      );
       await _maybeBumpCursor('courses', _asInt(item['sync_version']));
     });
 
@@ -269,16 +276,19 @@ class SyncEngine {
       final courseUuid =
           await _courseClientUuidByServerId(item['course_id'] as String?);
       if (courseUuid == null) return;
-      await db.into(db.lessons).insertOnConflictUpdate(LessonsCompanion.insert(
-        clientUuid: item['client_uuid'] as String,
-        serverId: Value(item['id'] as String?),
-        courseClientUuid: courseUuid,
-        title: item['title'] as String,
-        position: Value(_asInt(item['position'])),
-        deleted: Value(item['deleted_at'] != null),
-        pendingSync: const Value(false),
-        syncVersion: Value(_asInt(item['sync_version'])),
-      ));
+      await db.into(db.lessons).insert(
+        LessonsCompanion.insert(
+          clientUuid: item['client_uuid'] as String,
+          serverId: Value(item['id'] as String?),
+          courseClientUuid: courseUuid,
+          title: item['title'] as String,
+          position: Value(_asInt(item['position'])),
+          deleted: Value(item['deleted_at'] != null),
+          pendingSync: const Value(false),
+          syncVersion: Value(_asInt(item['sync_version'])),
+        ),
+        mode: InsertMode.insertOrReplace,
+      );
       await _maybeBumpCursor('lessons', _asInt(item['sync_version']));
     });
 
@@ -289,16 +299,19 @@ class SyncEngine {
       final lessonUuid =
           await _lessonClientUuidByServerId(item['lesson_id'] as String?);
       if (lessonUuid == null) return;
-      await db.into(db.chapters).insertOnConflictUpdate(ChaptersCompanion.insert(
-        clientUuid: item['client_uuid'] as String,
-        serverId: Value(item['id'] as String?),
-        lessonClientUuid: lessonUuid,
-        title: item['title'] as String,
-        position: Value(_asInt(item['position'])),
-        deleted: Value(item['deleted_at'] != null),
-        pendingSync: const Value(false),
-        syncVersion: Value(_asInt(item['sync_version'])),
-      ));
+      await db.into(db.chapters).insert(
+        ChaptersCompanion.insert(
+          clientUuid: item['client_uuid'] as String,
+          serverId: Value(item['id'] as String?),
+          lessonClientUuid: lessonUuid,
+          title: item['title'] as String,
+          position: Value(_asInt(item['position'])),
+          deleted: Value(item['deleted_at'] != null),
+          pendingSync: const Value(false),
+          syncVersion: Value(_asInt(item['sync_version'])),
+        ),
+        mode: InsertMode.insertOrReplace,
+      );
       await _maybeBumpCursor('chapters', _asInt(item['sync_version']));
     });
 
@@ -306,19 +319,20 @@ class SyncEngine {
     since = await _cursor('agenda');
     final agenda = await api.listAgenda(since: since);
     await _applyDelta(agenda, (item) async {
-      await db
-          .into(db.agendaItems)
-          .insertOnConflictUpdate(AgendaItemsCompanion.insert(
-        clientUuid: item['client_uuid'] as String,
-        serverId: Value(item['id'] as String?),
-        title: item['title'] as String,
-        notes: Value(item['notes'] as String?),
-        startsAt: Value(_asDate(item['starts_at'])),
-        endsAt: Value(_asDate(item['ends_at'])),
-        deleted: Value(item['deleted_at'] != null),
-        pendingSync: const Value(false),
-        syncVersion: Value(_asInt(item['sync_version'])),
-      ));
+      await db.into(db.agendaItems).insert(
+        AgendaItemsCompanion.insert(
+          clientUuid: item['client_uuid'] as String,
+          serverId: Value(item['id'] as String?),
+          title: item['title'] as String,
+          notes: Value(item['notes'] as String?),
+          startsAt: Value(_asDate(item['starts_at'])),
+          endsAt: Value(_asDate(item['ends_at'])),
+          deleted: Value(item['deleted_at'] != null),
+          pendingSync: const Value(false),
+          syncVersion: Value(_asInt(item['sync_version'])),
+        ),
+        mode: InsertMode.insertOrReplace,
+      );
       await _maybeBumpCursor('agenda', _asInt(item['sync_version']));
     });
   }
@@ -349,7 +363,11 @@ class SyncEngine {
       final chapterUuid =
           await _chapterClientUuidByServerId(item['chapter_id'] as String?);
       if (chapterUuid == null) continue;
-      await db.into(db.summaries).insertOnConflictUpdate(SummariesCompanion.insert(
+      // Local summaries table has no UNIQUE constraint on chapterClientUuid,
+      // so we let each insert allocate a new id. This is fine for v1; a
+      // proper "latest summary per chapter" view should add a UNIQUE
+      // constraint and target it.
+      await db.into(db.summaries).insert(SummariesCompanion.insert(
         chapterClientUuid: chapterUuid,
         contentMd: item['content_md'] as String,
         status: const Value('approved'),
@@ -363,7 +381,7 @@ class SyncEngine {
       final chapterUuid =
           await _chapterClientUuidByServerId(item['chapter_id'] as String?);
       if (chapterUuid == null) continue;
-      await db.into(db.exercises).insertOnConflictUpdate(ExercisesCompanion.insert(
+      await db.into(db.exercises).insert(ExercisesCompanion.insert(
         chapterClientUuid: chapterUuid,
         itemsJson: jsonEncode(item['items']),
         status: const Value('approved'),
@@ -377,7 +395,7 @@ class SyncEngine {
       final chapterUuid =
           await _chapterClientUuidByServerId(item['chapter_id'] as String?);
       if (chapterUuid == null) continue;
-      await db.into(db.quizzes).insertOnConflictUpdate(QuizzesCompanion.insert(
+      await db.into(db.quizzes).insert(QuizzesCompanion.insert(
         chapterClientUuid: chapterUuid,
         questionsJson: jsonEncode(item['questions']),
         status: const Value('approved'),
