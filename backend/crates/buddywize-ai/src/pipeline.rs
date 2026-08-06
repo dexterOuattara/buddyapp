@@ -21,6 +21,7 @@ pub struct Pipeline {
 struct RecordingJobRow {
     id: Uuid,
     user_id: Uuid,
+    user_role: String,
     chapter_id: Uuid,
     storage_path: String,
 }
@@ -47,14 +48,18 @@ impl Pipeline {
 
     async fn process(&self, recording_id: Uuid) -> anyhow::Result<()> {
         let rec: RecordingJobRow = sqlx::query_as(
-            "SELECT id, user_id, chapter_id, storage_path FROM recordings WHERE id = $1",
+            "SELECT r.id, r.user_id, u.role AS user_role, r.chapter_id, r.storage_path
+               FROM recordings r
+               JOIN users u ON u.id = r.user_id
+              WHERE r.id = $1",
         )
         .bind(recording_id)
         .fetch_one(&self.db)
         .await?;
 
         // Entitlement gate: lapsed users keep their content but get no NEW processing.
-        if active_entitlement(&self.db, rec.user_id).await?.is_none() {
+        // Admins always pass (synthetic entitlement).
+        if active_entitlement(&self.db, rec.user_id, &rec.user_role).await?.is_none() {
             tracing::info!(%recording_id, user_id = %rec.user_id, "no active entitlement; skipping processing");
             self.set_status(recording_id, "blocked", Some("subscription or trial ended"))
                 .await?;

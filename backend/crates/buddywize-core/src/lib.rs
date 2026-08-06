@@ -8,7 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use serde::Deserialize;
 use sqlx::PgPool;
 use utoipa::IntoParams;
@@ -119,10 +119,18 @@ pub struct SubscriptionRow {
 }
 
 /// Returns the user's active (non-expired) entitlement, if any.
+///
+/// Admins always get a synthetic "admin" entitlement regardless of the
+/// `subscriptions` table — they're treated as fully-unlimited users. This
+/// mirrors the platform convention that admin accounts bypass billing.
 pub async fn active_entitlement(
     db: &PgPool,
     user_id: Uuid,
+    role: &str,
 ) -> Result<Option<SubscriptionRow>, sqlx::Error> {
+    if role == "admin" {
+        return Ok(Some(admin_entitlement(user_id)));
+    }
     sqlx::query_as::<_, SubscriptionRow>(
         "SELECT id, user_id, plan, status, started_at, expires_at
            FROM subscriptions
@@ -133,6 +141,27 @@ pub async fn active_entitlement(
     .bind(user_id)
     .fetch_optional(db)
     .await
+}
+
+/// Synthetic unlimited entitlement for admin users.
+///
+/// Uses a far-future `expires_at` so downstream code (which compares against
+/// `now()`) treats this as active forever. `id` is zero — admin entitlements
+/// aren't stored as rows, so the id is meaningless and never persisted.
+fn admin_entitlement(user_id: Uuid) -> SubscriptionRow {
+    let now = Utc::now();
+    let expires = NaiveDateTime::new(
+        NaiveDate::from_ymd_opt(2099, 1, 1).expect("valid date"),
+        NaiveTime::from_hms_opt(0, 0, 0).expect("valid time"),
+    );
+    SubscriptionRow {
+        id: Uuid::nil(),
+        user_id,
+        plan: "admin".into(),
+        status: "active".into(),
+        started_at: now,
+        expires_at: Utc.from_utc_datetime(&expires),
+    }
 }
 
 // ------------------------------------------------------------------ user rows
@@ -217,5 +246,27 @@ mod tests {
         tx.try_send(id).unwrap();
         let received = rx.try_recv().unwrap();
         assert_eq!(received, id);
+    }
+
+    /// Admin users get a synthetic unlimited entitlement even when they
+    /// have no row in the `subscriptions` table. The entitlement must be
+    /// active and far enough in the future that every comparison
+    /// `expires_at > now()` succeeds.
+    #[tokio::test]
+    async fn admin_entitlement_is_synthetic_and_active() {
+        // We can't hit the DB here (no test container wired up), but we can
+        // exercise the helper directly. The function-level check is the same
+        // — `active_entitlement` short-circuits before the SQL query for
+        // admins.
+        let user_id = Uuid::new_v4();
+        // Re-derive the synthetic via the public function (use a dummy pool
+        // by never touching it for the admin branch).
+        // We can't easily build a fake PgPool here, so we just confirm the
+        // shape of the row that the helper produces.
+        let row = super::admin_entitlement(user_id);
+        assert_eq!(row.user_id, user_id);
+        assert_eq!(row.plan, "admin");
+        assert_eq!(row.status, "active");
+        assert!(row.expires_at > Utc::now() + chrono::Duration::days(365 * 50));
     }
 }

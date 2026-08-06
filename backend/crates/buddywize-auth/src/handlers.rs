@@ -233,7 +233,7 @@ pub async fn me(
         .fetch_one(&state.db)
         .await?;
 
-    let subscription = active_entitlement(&state.db, user.id)
+    let subscription = active_entitlement(&state.db, user.id, &user.role)
         .await?
         .map(|s| SubscriptionDto {
             plan: s.plan,

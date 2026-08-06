@@ -317,7 +317,7 @@ pub async fn reprocess(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ReprocessResponse>> {
-    let entitlement = buddywize_core::active_entitlement(&state.db, user.sub).await?;
+    let entitlement = buddywize_core::active_entitlement(&state.db, user.sub, &user.role).await?;
     if entitlement.is_none() {
         return Err(ApiError::Forbidden.into());
     }
