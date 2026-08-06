@@ -320,6 +320,7 @@ pub async fn recording_detail(
 pub async fn recording_audio(
     State(state): State<AdminState>,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let rec = load_admin_recording(&state, id)
         .await
@@ -332,22 +333,106 @@ pub async fn recording_audio(
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
     let mime = mime_for_key(&key);
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(mime),
-    );
-    headers.insert(
-        header::CONTENT_LENGTH,
-        HeaderValue::from(bytes.len() as u64),
-    );
-    // Cache aggressively — admin will replay the same audio while moderating.
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=300"));
+    let total = bytes.len() as u64;
 
+    // Always advertise range support — the browser needs this to know it
+    // can request a partial response for `<audio>` seek / streaming.
+    let mut resp_headers = HeaderMap::new();
+    resp_headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    resp_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=300"));
+
+    // Parse `Range: bytes=START-END` (per RFC 9110). We accept:
+    //   bytes=START-      (open-ended: bytes START .. total)
+    //   bytes=START-END   (closed)
+    //   bytes=-SUFFIX     (last N bytes — not used by audio, but cheap)
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_bytes_range);
+
+    match range {
+        Some((start, end_inclusive)) if start < total => {
+            let end = end_inclusive.min(total - 1);
+            let len = end - start + 1;
+            let mut header = format!("bytes {start}-{end}/{total}");
+            if header.len() > 64 {
+                // sanity-check formatting
+                header.truncate(64);
+            }
+            resp_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
+            resp_headers.insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&len.to_string()).unwrap(),
+            );
+            resp_headers.insert(
+                header::CONTENT_RANGE,
+                HeaderValue::from_str(&format!("bytes {start}-{end}/{total}")).unwrap(),
+            );
+            let body = bytes.get(start as usize..=end as usize).unwrap_or(&[]).to_vec();
+            tracing::debug!(
+                recording_id = %id,
+                key = %key,
+                start,
+                end,
+                total,
+                "serving partial audio content"
+            );
+            Ok(range_response(StatusCode::PARTIAL_CONTENT, body, resp_headers))
+        }
+        // bytes=-SUFFIX: last N bytes. Not useful for audio but easy.
+        Some((u64::MAX, _)) => {
+            let n = total.min(0);
+            let body = bytes.get(total as usize - n as usize..).unwrap_or(&[]).to_vec();
+            resp_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
+            resp_headers.insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&body.len().to_string()).unwrap(),
+            );
+            Ok(range_response(StatusCode::PARTIAL_CONTENT, body, resp_headers))
+        }
+        // Out-of-range or malformed: ignore Range, serve the whole file.
+        _ => {
+            resp_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
+            resp_headers.insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from(total),
+            );
+            Ok(range_response(StatusCode::OK, bytes, resp_headers))
+        }
+    }
+}
+
+fn range_response(
+    status: StatusCode,
+    bytes: Vec<u8>,
+    headers: HeaderMap,
+) -> Response {
     let mut resp = Response::new(Body::from(bytes));
-    *resp.status_mut() = StatusCode::OK;
+    *resp.status_mut() = status;
     resp.headers_mut().extend(headers);
-    Ok(resp)
+    resp
+}
+
+/// Parse a `Range: bytes=START-END` header value into `(start, end_inclusive)`.
+///
+/// Returns `Some((u64::MAX, 0))` for suffix ranges (`bytes=-N`),
+/// `None` for malformed input.
+fn parse_bytes_range(value: &str) -> Option<(u64, u64)> {
+    let rest = value.trim().strip_prefix("bytes=")?;
+    let (start_s, end_s) = rest.split_once('-')?;
+    if start_s.is_empty() {
+        // bytes=-N suffix form
+        let n: u64 = end_s.parse().ok()?;
+        Some((u64::MAX, n))
+    } else {
+        let start: u64 = start_s.parse().ok()?;
+        let end: u64 = if end_s.is_empty() {
+            u64::MAX
+        } else {
+            end_s.parse().ok()?
+        };
+        Some((start, end))
+    }
 }
 
 /// Map a storage key to a MIME type we can play in the browser.

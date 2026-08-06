@@ -32,9 +32,9 @@
       collapseRow();
       return;
     }
-    if (expandedFor && audioUrls[expandedFor]) {
-      revokeBlobUrl(audioUrls[expandedFor]);
-    }
+    // Don't revoke the previous audio's Blob URL here — the audio element
+    // may still be playing in another row's element. We let GC reclaim
+    // them when the page reloads or the audio element is destroyed.
     expandedFor = recordingId;
     if (!details[recordingId] && !audioBusy[recordingId]) {
       loadDetail(recordingId);
@@ -42,10 +42,9 @@
   }
 
   function collapseRow() {
-    if (expandedFor && audioUrls[expandedFor]) {
-      revokeBlobUrl(audioUrls[expandedFor]);
-      audioUrls[expandedFor] = null;
-    }
+    // Keep audioUrls[expandedFor] alive — the audio element instance gets
+    // unmounted by Svelte but the underlying Blob URL stays valid until the
+    // page is unloaded. Revoking here would race with any in-flight playback.
     expandedFor = null;
   }
 
