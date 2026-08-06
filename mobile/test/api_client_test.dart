@@ -13,13 +13,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:buddywize/api/api_client.dart';
 
 http.Client _fakeClient(Future<http.Response> Function(http.Request) handler) {
-  return MockClient((request) => handler(request));
+  return MockClient((request) async => handler(request));
 }
 
 void main() {
   group('ApiClient _withRefresh', () {
     test('returns the response normally on 200', () async {
-      final client = _fakeClient((req) => http.Response('{"ok":1}', 200));
+      final client = _fakeClient(
+        (req) async => http.Response('{"ok":1}', 200),
+      );
       final api = ApiClient(client: client);
       final body = await api.listCourses();
       expect(body['ok'], 1);
@@ -28,7 +30,7 @@ void main() {
     test('refreshes once and retries on 401', () async {
       var attempts = 0;
       var refreshes = 0;
-      final client = _fakeClient((req) {
+      final client = _fakeClient((req) async {
         if (req.url.path.endsWith('/auth/refresh')) {
           refreshes += 1;
           return http.Response(
@@ -86,7 +88,7 @@ void main() {
     });
 
     test('clears the session and throws when refresh fails', () async {
-      final client = _fakeClient((req) {
+      final client = _fakeClient((req) async {
         if (req.url.path.endsWith('/auth/refresh')) {
           return http.Response('expired', 401);
         }
@@ -97,13 +99,20 @@ void main() {
       api.accessToken = 'old-access';
       api.refreshToken = 'old-refresh';
 
-      expect(() => api.listCourses(), throwsA(isA<ApiAuthException>()));
+      await expectLater(
+        () => api.listCourses(),
+        throwsA(isA<ApiAuthException>()),
+      );
+      // The onSessionCleared broadcast fires on a microtask scheduled by
+      // the broadcast controller; let it drain before asserting on token
+      // state (cleared synchronously inside clearSession()).
+      await Future<void>.delayed(Duration.zero);
       expect(api.accessToken, isNull);
       expect(api.refreshToken, isNull);
     });
 
     test('emits onSessionCleared when refresh fails', () async {
-      final client = _fakeClient((req) {
+      final client = _fakeClient((req) async {
         if (req.url.path.endsWith('/auth/refresh')) {
           return http.Response('expired', 401);
         }
@@ -116,14 +125,13 @@ void main() {
 
       final events = <void>[];
       final sub = api.onSessionCleared.listen(events.add);
-      try {
-        await expectLater(
-          () => api.listCourses(),
-          throwsA(isA<ApiAuthException>()),
-        );
-      } finally {
-        await sub.cancel();
-      }
+      await expectLater(
+        () => api.listCourses(),
+        throwsA(isA<ApiAuthException>()),
+      );
+      // Drain broadcast delivery before canceling.
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
       expect(events, hasLength(1));
     });
   });
