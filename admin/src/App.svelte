@@ -4,7 +4,6 @@
   import Dashboard from './views/Dashboard.svelte';
   import Users from './views/Users.svelte';
   import Recordings from './views/Recordings.svelte';
-  import Moderation from './views/Moderation.svelte';
 
   let authed = $state(isAuthenticated());
   let tab = $state('dashboard');
@@ -16,7 +15,6 @@
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'moderation', label: 'Content review', icon: '🧐' },
     { id: 'recordings', label: 'Recordings', icon: '🎙️' },
     { id: 'users', label: 'Users', icon: '👥' },
   ];
@@ -39,8 +37,6 @@
     <main class="content">
       {#if tab === 'dashboard'}
         <Dashboard />
-      {:else if tab === 'moderation'}
-        <Moderation />
       {:else if tab === 'recordings'}
         <Recordings />
       {:else if tab === 'users'}

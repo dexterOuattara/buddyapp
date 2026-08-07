@@ -128,7 +128,7 @@ impl Pipeline {
 
         sqlx::query(
             "INSERT INTO summaries (recording_id, chapter_id, content_md, status)
-             VALUES ($1, $2, $3, 'pending_review')",
+             VALUES ($1, $2, $3, 'approved')",
         )
         .bind(recording_id)
         .bind(chapter_id)
@@ -138,7 +138,7 @@ impl Pipeline {
 
         sqlx::query(
             "INSERT INTO exercises (recording_id, chapter_id, items, status)
-             VALUES ($1, $2, $3, 'pending_review')",
+             VALUES ($1, $2, $3, 'approved')",
         )
         .bind(recording_id)
         .bind(chapter_id)
@@ -148,7 +148,7 @@ impl Pipeline {
 
         sqlx::query(
             "INSERT INTO quizzes (recording_id, chapter_id, questions, status)
-             VALUES ($1, $2, $3, 'pending_review')",
+             VALUES ($1, $2, $3, 'approved')",
         )
         .bind(recording_id)
         .bind(chapter_id)

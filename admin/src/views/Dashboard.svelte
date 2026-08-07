@@ -2,7 +2,6 @@
   import { api } from '../api.js';
 
   let recordings = $state([]);
-  let pending = $state([]);
   let users = $state([]);
   let error = $state('');
   let loading = $state(true);
@@ -11,13 +10,11 @@
     loading = true;
     error = '';
     try {
-      const [recs, mods, usrs] = await Promise.all([
+      const [recs, usrs] = await Promise.all([
         api.recordings(),
-        api.moderation(),
         api.users(),
       ]);
       recordings = recs;
-      pending = mods;
       users = usrs;
     } catch (e) {
       error = e.message;
@@ -54,15 +51,11 @@
     </div>
     <div class="stat">
       <div class="num">{statusCounts['ready'] || 0}</div>
-      <div class="lbl">Ready / moderated</div>
+      <div class="lbl">Ready</div>
     </div>
     <div class="stat">
       <div class="num">{statusCounts['failed'] || 0}</div>
       <div class="lbl">Failed</div>
-    </div>
-    <div class="stat">
-      <div class="num">{pending.length}</div>
-      <div class="lbl">Awaiting review</div>
     </div>
     <div class="stat">
       <div class="num">{users.length}</div>
@@ -75,8 +68,8 @@
     <p style="color:var(--muted);font-size:14px">
       A recording moves through <strong>uploaded → processing → ready</strong>.
       Anything stuck in <em>processing</em> for a long time or in <em>failed</em>
-      should be investigated. Study content still needs a moderator decision
-      before students see it (see Content review).
+      should be investigated. Generated study material is published to the
+      student as soon as it is ready.
     </p>
   </div>
 {/if}

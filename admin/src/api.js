@@ -115,13 +115,7 @@ export const api = {
     }),
   recordings: (status) =>
     request(`/admin/recordings${status ? `?status=${status}` : ''}`),
-  moderation: () => request('/admin/moderation'),
   recordingDetail: (id) => request(`/admin/recordings/${id}`),
-  decide: (kind, id, decision) =>
-    request(`/admin/moderation/${kind}/${id}`, {
-      method: 'POST',
-      body: JSON.stringify({ decision }),
-    }),
 };
 
 /**
