@@ -7,10 +7,11 @@ use std::sync::Arc;
 
 use axum::{routing::get, Router};
 use buddywize_admin::AdminState;
+use buddywize_ai::cloudflare_whisper::CloudflareWhisperStt;
 use buddywize_ai::mock::{MockStt, MockStudyGenerator};
 use buddywize_ai::pipeline::Pipeline;
 use buddywize_ai::providers::SttProvider;
-use buddywize_ai::{DeepSeekConfig, DeepSeekStudyGenerator, WhisperConfig, WhisperStt};
+use buddywize_ai::{CloudflareWhisperConfig, DeepSeekConfig, DeepSeekStudyGenerator, WhisperConfig, WhisperStt};
 use buddywize_auth::{AuthState, JwtConfig};
 use buddywize_core::settings::{DbSettingsStore, SettingsCache};
 use buddywize_core::{job_channel, storage};
@@ -150,12 +151,23 @@ async fn main() -> anyhow::Result<()> {
     // Object storage: R2 if `R2_BUCKET` is set, otherwise local filesystem.
     let storage = storage::from_env().await?;
 
-    // Speech-to-text provider. `WHISPER_MODEL=disabled` keeps the mock;
-    // any other value (or unset) defaults to `faster-whisper` with `medium`.
-    let stt: Arc<dyn SttProvider> = match std::env::var("WHISPER_MODEL").as_deref() {
+    // Speech-to-text provider.
+    //   STT_PROVIDER=cloudflare  → Cloudflare Whisper large-v3-turbo (default; fast, GPU-backed)
+    //   STT_PROVIDER=local      → local faster-whisper subprocess (CPU; current default model: medium)
+    //   STT_PROVIDER=mock       → deterministic pseudo-transcript (offline dev only)
+    let stt: Arc<dyn SttProvider> = match std::env::var("STT_PROVIDER").as_deref() {
         Ok("disabled") | Ok("mock") | Ok("off") => {
             tracing::info!("using mock STT provider");
             Arc::new(MockStt)
+        }
+        Ok("cloudflare") | Ok("cloudflare-whisper") | Ok("cf") => {
+            let cfg = CloudflareWhisperConfig::from_env()?;
+            tracing::info!(
+                account = %cfg.account_id,
+                model = %cfg.model,
+                "using Cloudflare Whisper STT provider"
+            );
+            Arc::new(CloudflareWhisperStt::new(cfg))
         }
         _ => {
             let cfg = WhisperConfig::from_env()?;
@@ -164,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
                 device = %cfg.device,
                 compute_type = %cfg.compute_type,
                 script = %cfg.script.display(),
-                "using faster-whisper STT provider"
+                "using local faster-whisper STT provider"
             );
             Arc::new(WhisperStt::new(cfg))
         }

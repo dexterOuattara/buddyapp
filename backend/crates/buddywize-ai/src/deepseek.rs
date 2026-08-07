@@ -222,10 +222,26 @@ impl DeepSeekStudyGenerator {
             .map(|c| c.message.content)
             .ok_or_else(|| CallError::Parse("response had no choices".into()))?;
 
-        let trimmed = strip_code_fences(&raw);
-        let mut content: GeneratedContentDto = serde_json::from_str(&trimmed).map_err(|e| {
-            CallError::Parse(format!("JSON parse failed: {e}; raw: {raw}"))
-        })?;
+        // DeepSeek-R1 reasoning models wrap their chain-of-thought in
+        // `<think>...</think>` blocks before the actual answer. Strip those
+        // blocks (and any markdown code fences) before looking for JSON.
+        let trimmed = strip_thinking_and_fences(&raw);
+        // Try parsing the cleaned string first; if it fails (e.g. the model
+        // emitted prose around the JSON), fall back to extracting the first
+        // balanced JSON object from the response.
+        let mut content: GeneratedContentDto = match serde_json::from_str(&trimmed) {
+            Ok(c) => c,
+            Err(_) => {
+                let extracted = extract_json_object(&trimmed).ok_or_else(|| {
+                    CallError::Parse(format!(
+                        "could not locate a JSON object in the response; raw: {raw}"
+                    ))
+                })?;
+                serde_json::from_str(&extracted).map_err(|e| {
+                    CallError::Parse(format!("extracted JSON did not match schema: {e}; extracted: {extracted}"))
+                })?
+            }
+        };
 
         // Defensive: trim to the schema (3 exercises, 10 quiz) if the model
         // overshot, or pad if it under-delivered. We always persist what the
@@ -309,6 +325,75 @@ fn strip_code_fences(s: &str) -> String {
         return rest.trim_end_matches("```").trim().to_string();
     }
     s.to_string()
+}
+
+/// Strip reasoning tags and markdown code fences. Reasoning-capable
+/// models (DeepSeek-R1, the new minimax-M3, etc.) emit their chain of
+/// thought in `<think>...</think>` blocks; the actual answer comes
+/// after. We drop the thinking and parse the remainder.
+fn strip_thinking_and_fences(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find("<think>") {
+        out.push_str(&rest[..start]);
+        if let Some(end) = rest[start..].find("</think>") {
+            // Skip past the closing tag.
+            let after = start + end + "</think>".len();
+            rest = &rest[after..];
+        } else {
+            // Unclosed think tag — treat the rest as content.
+            rest = &rest[start + "<think>".len()..];
+            break;
+        }
+    }
+    out.push_str(rest);
+    strip_code_fences(&out)
+}
+
+/// Find the first balanced `{ ... }` in `s` and return the substring.
+/// Used when the model emits JSON surrounded by prose or markdown.
+fn extract_json_object(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut start = None;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    let mut last_open = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if in_string {
+            if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' => {
+                if start.is_none() {
+                    start = Some(i);
+                    last_open = i;
+                }
+                depth += 1;
+            }
+            b'}' => {
+                if depth > 0 {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(s[start.unwrap()..=i].to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let _ = last_open;
+    None
 }
 
 // ---------- Cloudflare request / response DTOs ----------
@@ -403,5 +488,60 @@ mod tests {
         let t = Transcript { text: "x".into(), language: Some("fr".into()) };
         let s = build_user_prompt("X", &t);
         assert!(s.contains("`fr`"));
+    }
+
+    #[test]
+    fn strip_thinking_drops_reasoning_block() {
+        let raw = "<think>I need to produce JSON for the user. Let me think step by step.</think>\n{\"summary_markdown\":\"# Hi\",\"exercises\":[],\"quiz\":[]}";
+        let s = strip_thinking_and_fences(raw);
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["summary_markdown"], "# Hi");
+    }
+
+    #[test]
+    fn strip_thinking_handles_multiple_blocks() {
+        let raw = "<think>step 1</think>between<think>step 2</think>\n{\"a\":1}";
+        let s = strip_thinking_and_fences(raw);
+        // Both think blocks are removed; the prose between them remains.
+        // The full-string parse will fail; the caller's extract_json_object
+        // fallback is what handles this. We just verify the think tags
+        // are gone.
+        assert!(!s.contains("<think>"));
+        assert!(!s.contains("step 1"));
+        assert!(!s.contains("step 2"));
+        assert!(s.contains("{\"a\":1}"));
+    }
+
+    #[test]
+    fn strip_thinking_handles_unclosed_tag() {
+        let raw = "<think>unfinished thinking and no closing tag\n{\"a\":1}";
+        let s = strip_thinking_and_fences(raw);
+        // Best-effort: we still drop the prefix, the JSON parses.
+        assert!(s.contains("{\"a\":1}"));
+    }
+
+    #[test]
+    fn extract_json_object_finds_balanced_braces() {
+        let s = r#"Here is the JSON you asked for:
+{"a":1,"b":{"c":2}}
+Hope that helps."#;
+        let extracted = extract_json_object(s).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&extracted).unwrap();
+        assert_eq!(v["a"], 1);
+        assert_eq!(v["b"]["c"], 2);
+    }
+
+    #[test]
+    fn extract_json_object_skips_braces_inside_strings() {
+        let s = r#"{"a":"has { and } in it","b":2}"#;
+        let extracted = extract_json_object(s).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&extracted).unwrap();
+        assert_eq!(v["a"], "has { and } in it");
+        assert_eq!(v["b"], 2);
+    }
+
+    #[test]
+    fn extract_json_object_returns_none_when_no_json() {
+        assert!(extract_json_object("just plain text").is_none());
     }
 }

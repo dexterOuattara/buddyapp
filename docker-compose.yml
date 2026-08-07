@@ -35,10 +35,15 @@ services:
       R2_BUCKET: ${R2_BUCKET:-}
       STORAGE_DIR: /data/storage
 
-      # Cloudflare Workers AI for the study-material generator.
-      # CF_AI_TOKEN must be a Cloudflare API token with Workers AI:Read.
+      # Cloudflare Workers AI for both the STT (Whisper) and the
+      # study-material generator (DeepSeek). CF_AI_TOKEN must be a
+      # Cloudflare API token with Workers AI:Read.
       CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:-}
       CF_AI_TOKEN: ${CF_AI_TOKEN:-}
+      # STT_PROVIDER=cloudflare (default; GPU Whisper turbo) | local | mock
+      STT_PROVIDER: ${STT_PROVIDER:-cloudflare}
+      # Optional override of the Cloudflare Whisper model id.
+      CF_WHISPER_MODEL: ${CF_WHISPER_MODEL:-}
       # STUDY_GENERATOR=cloudflare-deepseek (default) | mock
       STUDY_GENERATOR: ${STUDY_GENERATOR:-cloudflare-deepseek}
 
