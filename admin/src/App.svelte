@@ -4,6 +4,7 @@
   import Dashboard from './views/Dashboard.svelte';
   import Users from './views/Users.svelte';
   import Recordings from './views/Recordings.svelte';
+  import Settings from './views/Settings.svelte';
 
   let authed = $state(isAuthenticated());
   let tab = $state('dashboard');
@@ -17,6 +18,7 @@
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'recordings', label: 'Recordings', icon: '🎙️' },
     { id: 'users', label: 'Users', icon: '👥' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 </script>
 
@@ -41,6 +43,8 @@
         <Recordings />
       {:else if tab === 'users'}
         <Users />
+      {:else if tab === 'settings'}
+        <Settings />
       {/if}
     </main>
   </div>

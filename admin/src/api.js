@@ -116,6 +116,12 @@ export const api = {
   recordings: (status) =>
     request(`/admin/recordings${status ? `?status=${status}` : ''}`),
   recordingDetail: (id) => request(`/admin/recordings/${id}`),
+  studyGenerator: () => request('/admin/study_generator'),
+  setStudyGenerator: (model) =>
+    request('/admin/study_generator', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    }),
 };
 
 /**

@@ -10,8 +10,9 @@ use buddywize_admin::AdminState;
 use buddywize_ai::mock::{MockStt, MockStudyGenerator};
 use buddywize_ai::pipeline::Pipeline;
 use buddywize_ai::providers::SttProvider;
-use buddywize_ai::{WhisperConfig, WhisperStt};
+use buddywize_ai::{DeepSeekConfig, DeepSeekStudyGenerator, WhisperConfig, WhisperStt};
 use buddywize_auth::{AuthState, JwtConfig};
+use buddywize_core::settings::{DbSettingsStore, SettingsCache};
 use buddywize_core::{job_channel, storage};
 use buddywize_courses::CourseState;
 use buddywize_recordings::RecordingState;
@@ -67,6 +68,9 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::decide_summary,
         buddywize_admin::decide_exercises,
         buddywize_admin::decide_quiz,
+        // settings
+        buddywize_admin::get_study_generator,
+        buddywize_admin::put_study_generator,
     ),
     components(schemas(
         // auth
@@ -107,6 +111,9 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::RecordingDetailDto,
         buddywize_admin::PendingItem,
         buddywize_admin::ModerationDecision,
+        // settings
+        buddywize_admin::StudyGeneratorState,
+        buddywize_admin::StudyGeneratorUpdate,
     ))
 )]
 struct ApiDoc;
@@ -163,12 +170,37 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Settings: read from the `app_settings` table, cached in memory.
+    // The cache is invalidated on every admin PUT to /admin/study_generator.
+    let settings_store = DbSettingsStore::new(db.clone());
+    let settings_cache = SettingsCache::new(settings_store).await;
+
+    // Study-material generator. Default is Cloudflare DeepSeek via REST;
+    // falls back to the mock template if CF_AI_TOKEN is missing or the
+    // upstream call fails.
+    let generator: Arc<dyn buddywize_ai::providers::StudyGenerator> = match std::env::var("STUDY_GENERATOR").as_deref() {
+        Ok("mock") => {
+            tracing::info!("using mock study generator");
+            Arc::new(MockStudyGenerator)
+        }
+        _ => {
+            let cfg = DeepSeekConfig::from_env()?;
+            tracing::info!(
+                account = %cfg.account_id,
+                temperature = cfg.temperature,
+                max_output_tokens = cfg.max_output_tokens,
+                "using Cloudflare Workers AI study generator (model is read live from app_settings)"
+            );
+            Arc::new(DeepSeekStudyGenerator::new(cfg, settings_cache.clone()))
+        }
+    };
+
     let (jobs_tx, jobs_rx) = job_channel(100);
     let pipeline = Pipeline::new(
         db.clone(),
         storage.clone(),
         stt,
-        Arc::new(MockStudyGenerator),
+        generator,
     );
     tokio::spawn(pipeline.run(jobs_rx));
 
@@ -181,7 +213,11 @@ async fn main() -> anyhow::Result<()> {
     let auth_state = AuthState { db: db.clone(), jwt };
     let course_state = CourseState { db: db.clone() };
     let recording_state = RecordingState { db: db.clone(), storage: storage.clone(), jobs: jobs_tx };
-    let admin_state = AdminState { db: db.clone(), storage: storage.clone() };
+    let admin_state = AdminState {
+        db: db.clone(),
+        storage: storage.clone(),
+        settings: settings_cache.clone(),
+    };
     let sync_state = sync::SyncState { db: db.clone() };
 
     // Sub-routers each own their state; everything merged below is Router<()>.

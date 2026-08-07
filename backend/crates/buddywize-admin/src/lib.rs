@@ -14,6 +14,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use buddywize_core::settings::SettingsCache;
 use buddywize_core::storage::StorageBackend;
 use buddywize_core::{ApiError, ApiResult};
 use chrono::{DateTime, Utc};
@@ -26,6 +27,7 @@ use uuid::Uuid;
 pub struct AdminState {
     pub db: PgPool,
     pub storage: Arc<dyn StorageBackend>,
+    pub settings: SettingsCache,
 }
 
 pub fn router(state: AdminState) -> Router {
@@ -39,6 +41,8 @@ pub fn router(state: AdminState) -> Router {
         .route("/admin/moderation/summaries/:id", post(decide_summary))
         .route("/admin/moderation/exercises/:id", post(decide_exercises))
         .route("/admin/moderation/quizzes/:id", post(decide_quiz))
+        .route("/admin/study_generator", get(get_study_generator))
+        .route("/admin/study_generator", post(put_study_generator))
         .with_state(state)
 }
 
@@ -604,6 +608,113 @@ async fn apply_decision(
         return Err(ApiError::NotFound);
     }
     Ok(Json(serde_json::json!({ "id": id, "status": decision })))
+}
+
+// ---------------------------------------------------------------- study generator
+
+/// Curated allow-list of reasoning-capable models available on
+/// Cloudflare Workers AI. The list is hard-coded (not DB-backed) so
+/// admins can't accidentally swap to a non-existent or surprising model.
+const ALLOWED_STUDY_GENERATOR_MODELS: &[StudyGeneratorModel] = &[
+    StudyGeneratorModel {
+        id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        label: "DeepSeek R1 Distill Qwen 32B (default)",
+        pricing: "$0.50/M in · $4.88/M out",
+        free_tier: false,
+    },
+    StudyGeneratorModel {
+        id: "deepseek/deepseek-v4-pro",
+        label: "DeepSeek V4 Pro (partner)",
+        pricing: "see Cloudflare dashboard",
+        free_tier: false,
+    },
+    StudyGeneratorModel {
+        id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        label: "Llama 3.3 70B Instruct (fast)",
+        pricing: "free up to 10K neurons/day",
+        free_tier: true,
+    },
+    StudyGeneratorModel {
+        id: "@cf/mistralai/mistral-small-3.1-24b-instruct",
+        label: "Mistral Small 3.1 24B",
+        pricing: "$0.20/M in · $0.60/M out",
+        free_tier: false,
+    },
+];
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct StudyGeneratorModel {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub pricing: &'static str,
+    pub free_tier: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StudyGeneratorState {
+    pub model: String,
+    pub available: Vec<StudyGeneratorModel>,
+}
+
+/// Read the currently-active model and the curated allow-list.
+#[utoipa::path(
+    get,
+    path = "/api/admin/study_generator",
+    responses((status = 200, description = "Study generator state", body = StudyGeneratorState))
+)]
+pub async fn get_study_generator(
+    State(state): State<AdminState>,
+) -> ApiResult<Json<StudyGeneratorState>> {
+    let model = state
+        .settings
+        .get_or_load("study_generator_model")
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?
+        .unwrap_or_else(|| "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b".to_string());
+    Ok(Json(StudyGeneratorState {
+        model,
+        available: ALLOWED_STUDY_GENERATOR_MODELS.to_vec(),
+    }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StudyGeneratorUpdate {
+    pub model: String,
+}
+
+/// Swap the active model. Persists to `app_settings`, refreshes the
+/// settings cache so the next pipeline call sees the new value.
+#[utoipa::path(
+    post,
+    path = "/api/admin/study_generator",
+    request_body = StudyGeneratorUpdate,
+    responses((status = 200, description = "New study generator state", body = StudyGeneratorState))
+)]
+pub async fn put_study_generator(
+    State(state): State<AdminState>,
+    buddywize_auth::middleware::AuthUser(claims): buddywize_auth::middleware::AuthUser,
+    Json(body): Json<StudyGeneratorUpdate>,
+) -> ApiResult<Json<StudyGeneratorState>> {
+    if !ALLOWED_STUDY_GENERATOR_MODELS
+        .iter()
+        .any(|m| m.id == body.model)
+    {
+        return Err(ApiError::BadRequest(format!(
+            "model '{}' is not in the allow-list",
+            body.model
+        )));
+    }
+    let admin_id = claims.sub;
+    state
+        .settings
+        .set("study_generator_model", &body.model, Some(admin_id))
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    tracing::info!(model = %body.model, admin_id = %admin_id, "study generator model updated");
+    Ok(Json(StudyGeneratorState {
+        model: body.model,
+        available: ALLOWED_STUDY_GENERATOR_MODELS.to_vec(),
+    }))
 }
 
 #[cfg(test)]

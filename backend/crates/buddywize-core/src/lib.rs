@@ -1,6 +1,7 @@
 //! Shared kernel for BuddyWize services: errors, roles, sync primitives,
 //! storage abstraction, entitlement checks, and cross-service types.
 
+pub mod settings;
 pub mod storage;
 
 use axum::{

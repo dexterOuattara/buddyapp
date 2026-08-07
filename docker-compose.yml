@@ -35,6 +35,13 @@ services:
       R2_BUCKET: ${R2_BUCKET:-}
       STORAGE_DIR: /data/storage
 
+      # Cloudflare Workers AI for the study-material generator.
+      # CF_AI_TOKEN must be a Cloudflare API token with Workers AI:Read.
+      CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:-}
+      CF_AI_TOKEN: ${CF_AI_TOKEN:-}
+      # STUDY_GENERATOR=cloudflare-deepseek (default) | mock
+      STUDY_GENERATOR: ${STUDY_GENERATOR:-cloudflare-deepseek}
+
       RUST_LOG: buddywize=debug,tower_http=info
     ports:
       - "7878:7878"
