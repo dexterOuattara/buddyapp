@@ -5,10 +5,10 @@
 //! `app_settings.study_generator_model` via `SettingsCache`, so admins can
 //! swap models from the Settings page without a restart or rebuild.
 //!
-//! If the model id is missing, the upstream API call fails twice, or the
-//! response fails schema validation, we fall back to the deterministic
-//! `MockStudyGenerator` so the recording still publishes — students
-//! never see a stuck "Generating summary…" state.
+//! Failures propagate. HTTP errors (4xx/5xx, network) and missing credentials
+//! surface immediately as `Err`, so the pipeline marks the recording as
+//! `failed` with the actual error message. JSON parse failures get one retry
+//! with a stricter prompt before bubbling up — there is no silent fallback.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,7 +18,6 @@ use buddywize_core::settings::SettingsCache;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::mock::MockStudyGenerator;
 use crate::providers::{GeneratedContent, StudyGenerator, Transcript};
 
 const SETTINGS_KEY: &str = "study_generator_model";
@@ -34,13 +33,20 @@ pub struct DeepSeekConfig {
 }
 
 impl DeepSeekConfig {
-    /// Build from environment. `token` may be empty — if so, every call
-    /// fails fast and the mock fallback kicks in. We log a warning at
-    /// startup so the operator notices.
+    /// Build from environment. `CF_AI_TOKEN` is required — the generator
+    /// refuses to start without it so the operator gets a loud failure
+    /// instead of every recording silently going to `failed` later.
     pub fn from_env() -> anyhow::Result<Self> {
         let account_id = std::env::var("CF_ACCOUNT_ID")
             .map_err(|_| anyhow::anyhow!("CF_ACCOUNT_ID must be set"))?;
-        let token = std::env::var("CF_AI_TOKEN").unwrap_or_default();
+        let token = std::env::var("CF_AI_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow::anyhow!(
+                "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read) \
+                 to use the Cloudflare study generator. \
+                 Set STUDY_GENERATOR=mock to use the deterministic offline template instead."
+            ))?;
         let temperature: f32 = std::env::var("CF_AI_TEMPERATURE")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -53,14 +59,6 @@ impl DeepSeekConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
-
-        if token.is_empty() {
-            tracing::warn!(
-                "CF_AI_TOKEN is not set — Cloudflare LLM calls will fail and the \
-                 study-material generator will fall back to the mock template. \
-                 Set CF_AI_TOKEN in the environment to enable real generation."
-            );
-        }
 
         Ok(Self {
             account_id,
@@ -136,21 +134,39 @@ impl StudyGenerator for DeepSeekStudyGenerator {
                     );
                     return Ok(content);
                 }
-                Err(e) => {
-                    tracing::warn!(error = %e, model = %model, attempt = attempt, "deepseek call failed");
-                    last_err = Some(e);
+                Err(CallError::Http(e)) => {
+                    // Transport / auth / 5xx: don't retry, surface immediately
+                    // so the recording goes to `failed` with a real reason.
+                    tracing::warn!(
+                        error = %e, model = %model,
+                        "Cloudflare LLM call failed (non-retriable); recording will be marked failed"
+                    );
+                    return Err(e);
+                }
+                Err(CallError::Parse(e)) => {
+                    // LLM responded 200 OK but the body wasn't our schema.
+                    // Retry once with a stricter prompt; if it still fails,
+                    // the recording lands in `failed` (no silent fallback).
+                    tracing::warn!(error = %e, model = %model, attempt = attempt, "deepseek parse failed");
+                    last_err = Some(anyhow::anyhow!("{e}"));
                 }
             }
         }
 
-        tracing::warn!(
-            error = ?last_err,
-            "falling back to mock study generator (no LLM output available)"
-        );
-        // Last-resort fallback: canned template so the recording still
-        // publishes and the user gets a usable summary.
-        Ok(MockStudyGenerator.generate(chapter_title, transcript).await?)
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("deepseek call failed without an error")))
     }
+}
+
+/// Internal error categories for [`DeepSeekStudyGenerator::call_model`].
+/// Lets the generator distinguish transport failures (which the operator
+/// needs to see) from parse failures (which are worth retrying with a
+/// stricter prompt).
+#[derive(Debug, thiserror::Error)]
+enum CallError {
+    #[error("Cloudflare LLM HTTP call failed: {0}")]
+    Http(anyhow::Error),
+    #[error("Cloudflare LLM response did not match the expected JSON schema: {0}")]
+    Parse(String),
 }
 
 impl DeepSeekStudyGenerator {
@@ -159,11 +175,7 @@ impl DeepSeekStudyGenerator {
         model: &str,
         system: &str,
         user: &str,
-    ) -> anyhow::Result<GeneratedContent> {
-        if self.cfg.token.is_empty() {
-            anyhow::bail!("CF_AI_TOKEN is empty");
-        }
-
+    ) -> Result<GeneratedContent, CallError> {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/ai/v1/chat/completions",
             self.cfg.account_id
@@ -191,25 +203,29 @@ impl DeepSeekStudyGenerator {
             .bearer_auth(&self.cfg.token)
             .json(&body)
             .send()
-            .await?;
+            .await
+            .map_err(|e| CallError::Http(e.into()))?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Cloudflare LLM returned HTTP {status}: {text}");
+            return Err(CallError::Http(anyhow::anyhow!(
+                "Cloudflare LLM returned HTTP {status}: {text}"
+            )));
         }
 
-        let parsed: ChatResponse = resp.json().await?;
+        let parsed: ChatResponse = resp.json().await.map_err(|e| CallError::Http(e.into()))?;
         let raw = parsed
             .choices
             .into_iter()
             .next()
             .map(|c| c.message.content)
-            .ok_or_else(|| anyhow::anyhow!("Cloudflare LLM response had no choices"))?;
+            .ok_or_else(|| CallError::Parse("response had no choices".into()))?;
 
         let trimmed = strip_code_fences(&raw);
-        let mut content: GeneratedContentDto = serde_json::from_str(&trimmed)
-            .map_err(|e| anyhow::anyhow!("LLM JSON parse failed: {e}; raw: {raw}"))?;
+        let mut content: GeneratedContentDto = serde_json::from_str(&trimmed).map_err(|e| {
+            CallError::Parse(format!("JSON parse failed: {e}; raw: {raw}"))
+        })?;
 
         // Defensive: trim to the schema (3 exercises, 10 quiz) if the model
         // overshot, or pad if it under-delivered. We always persist what the
