@@ -3,7 +3,10 @@
 
 use async_trait::async_trait;
 
-use crate::providers::{Exercise, GeneratedContent, QuizQuestion, SttProvider, StudyGenerator, Transcript};
+use crate::providers::{
+    AgendaItemDraft, AgendaParser, Exercise, GeneratedContent, QuizQuestion, SttProvider,
+    StudyGenerator, Transcript,
+};
 
 /// Produces a stable pseudo-transcript proportional to the audio size.
 pub struct MockStt;
@@ -230,5 +233,41 @@ mod tests {
         // At least some exercises should have guidance
         let with_guidance = content.exercises.iter().filter(|e| e.guidance.is_some()).count();
         assert!(with_guidance > 0, "at least one exercise should have guidance");
+    }
+}
+
+/// Canned agenda parser for offline development. Returns three sample
+/// items so the mobile confirmation screen has something to show.
+pub struct MockAgendaParser;
+
+#[async_trait::async_trait]
+impl AgendaParser for MockAgendaParser {
+    fn name(&self) -> &str {
+        "mock-agenda"
+    }
+
+    async fn parse(&self, _input: &[u8]) -> anyhow::Result<Vec<AgendaItemDraft>> {
+        // Deterministic mock — doesn't read the bytes. The mobile sees
+        // the same three items every time it scans in mock mode.
+        Ok(vec![
+            AgendaItemDraft {
+                title: "Mathématiques — Algèbre".into(),
+                starts_at: Some("2026-08-25T09:00:00+00:00".into()),
+                ends_at: Some("2026-08-25T10:00:00+00:00".into()),
+                notes: Some("Salle B204".into()),
+            },
+            AgendaItemDraft {
+                title: "Français — Dissertation".into(),
+                starts_at: Some("2026-08-26T14:00:00+00:00".into()),
+                ends_at: Some("2026-08-26T15:30:00+00:00".into()),
+                notes: None,
+            },
+            AgendaItemDraft {
+                title: "Histoire — Révision chapitre 3".into(),
+                starts_at: Some("2026-08-27T10:00:00+00:00".into()),
+                ends_at: None,
+                notes: Some("Apporter le manuel".into()),
+            },
+        ])
     }
 }

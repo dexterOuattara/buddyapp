@@ -46,6 +46,10 @@ services:
       CF_WHISPER_MODEL: ${CF_WHISPER_MODEL:-}
       # STUDY_GENERATOR=cloudflare-deepseek (default) | mock
       STUDY_GENERATOR: ${STUDY_GENERATOR:-cloudflare-deepseek}
+      # AGENDA_PARSER=cloudflare-gemma (default) | mock
+      AGENDA_PARSER: ${AGENDA_PARSER:-cloudflare-gemma}
+      # Optional override of the Gemma agenda-OCR model id.
+      CF_GEMMA_MODEL: ${CF_GEMMA_MODEL:-}
 
       RUST_LOG: buddywize=debug,tower_http=info
     ports:

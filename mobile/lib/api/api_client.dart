@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
+import '../core/agenda_item.dart';
 import '../core/config.dart';
 
 /// Thin REST client over the Swagger-documented backend API.
@@ -72,9 +74,6 @@ class ApiClient {
   Future<Map<String, dynamic>> listAgenda({int? since}) =>
       _get('agenda', since == null ? null : {'since': '$since'});
 
-  Future<Map<String, dynamic>> upsertAgenda(Map<String, dynamic> body) =>
-      _post('agenda', body);
-
   // ------------------------------------------------------------------ courses
 
   Future<Map<String, dynamic>> listCourses({int? since}) =>
@@ -118,6 +117,69 @@ class ApiClient {
 
   Future<Map<String, dynamic>> listStudy({int? since}) =>
       _get('study', since == null ? null : {'since': '$since'});
+
+  // ----------------------------------------------------------------- agenda
+
+  /// Send an agenda photo to the server for OCR + structuring.
+  /// Returns the parsed drafts for the confirmation screen.
+  Future<List<AgendaItemDraft>> parseAgendaImage(List<int> jpegBytes) async {
+    final req = http.MultipartRequest('POST', _u('agenda/parse'))
+      ..files.add(http.MultipartFile.fromBytes(
+        'image',
+        jpegBytes,
+        filename: 'agenda.jpg',
+        contentType: MediaType('image', 'jpeg'),
+      ));
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    _ensureOk(resp);
+    final list = _decodeList(resp);
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(AgendaItemDraft.fromJson)
+        .toList(growable: false);
+  }
+
+  /// Import agenda items from an iCal text blob.
+  /// POST a JSON body and return the raw response (no auto-decode).
+  /// Used by endpoints whose body is a JSON array (agenda/parse, agenda/ical).
+  Future<http.Response> _postRaw(String path, Map<String, dynamic> body) async {
+    final first = await _client.post(
+      _u(path),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    if (first.statusCode != 401) return first;
+    await _ensureRefresh();
+    return _client.post(
+      _u(path),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+  }
+
+  Future<List<AgendaItemDraft>> importIcalText(String icsText) async {
+    final resp = await _postRaw('agenda/ical', {'text': icsText});
+    final list = _decodeList(resp);
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(AgendaItemDraft.fromJson)
+        .toList(growable: false);
+  }
+
+  /// Import agenda items from an iCal URL (server fetches it).
+  Future<List<AgendaItemDraft>> importIcalUrl(String url) async {
+    final resp = await _postRaw('agenda/ical', {'url': url});
+    final list = _decodeList(resp);
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(AgendaItemDraft.fromJson)
+        .toList(growable: false);
+  }
+
+  /// Upsert one confirmed agenda item into the user's agenda.
+  Future<Map<String, dynamic>> upsertAgenda(Map<String, dynamic> body) =>
+      _post('agenda', body);
 
   // --------------------------------------------------------------------- sync
 
@@ -203,6 +265,26 @@ class ApiClient {
     if (res.body.isEmpty) return const {};
     final decoded = jsonDecode(res.body);
     return decoded is Map<String, dynamic> ? decoded : {'data': decoded};
+  }
+
+  /// Decode a JSON array response (used by the agenda endpoints).
+  List<dynamic> _decodeList(http.Response res) {
+    if (res.statusCode == 401) throw const ApiAuthException();
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, res.body);
+    }
+    if (res.body.isEmpty) return const [];
+    final decoded = jsonDecode(res.body);
+    return decoded is List ? decoded : const [];
+  }
+
+  /// Throw on a non-2xx response. Used after multipart sends where the
+  /// stream isn't already wrapped by `_withRefresh`.
+  void _ensureOk(http.Response res) {
+    if (res.statusCode == 401) throw const ApiAuthException();
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, res.body);
+    }
   }
 }
 

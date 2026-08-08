@@ -7,11 +7,15 @@ use std::sync::Arc;
 
 use axum::{routing::get, Router};
 use buddywize_admin::AdminState;
+use buddywize_ai::cloudflare_agenda::CloudflareAgendaParser;
 use buddywize_ai::cloudflare_whisper::CloudflareWhisperStt;
 use buddywize_ai::mock::{MockStt, MockStudyGenerator};
 use buddywize_ai::pipeline::Pipeline;
-use buddywize_ai::providers::SttProvider;
-use buddywize_ai::{CloudflareWhisperConfig, DeepSeekConfig, DeepSeekStudyGenerator, WhisperConfig, WhisperStt};
+use buddywize_ai::providers::{AgendaParser, SttProvider};
+use buddywize_ai::{
+    CloudflareAgendaConfig, CloudflareWhisperConfig, DeepSeekConfig, DeepSeekStudyGenerator,
+    WhisperConfig, WhisperStt,
+};
 use buddywize_auth::{AuthState, JwtConfig};
 use buddywize_core::settings::{DbSettingsStore, SettingsCache};
 use buddywize_core::{job_channel, storage};
@@ -69,6 +73,9 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::decide_summary,
         buddywize_admin::decide_exercises,
         buddywize_admin::decide_quiz,
+        // agenda ingestion
+        buddywize_courses::handlers::parse_agenda_image,
+        buddywize_courses::handlers::import_ical,
         // settings
         buddywize_admin::get_study_generator,
         buddywize_admin::put_study_generator,
@@ -112,6 +119,9 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_admin::RecordingDetailDto,
         buddywize_admin::PendingItem,
         buddywize_admin::ModerationDecision,
+        // agenda ingestion
+        buddywize_courses::handlers::IcalImportRequest,
+        buddywize_ai::providers::AgendaItemDraft,
         // settings
         buddywize_admin::StudyGeneratorState,
         buddywize_admin::StudyGeneratorUpdate,
@@ -216,6 +226,25 @@ async fn main() -> anyhow::Result<()> {
     );
     tokio::spawn(pipeline.run(jobs_rx));
 
+    // Agenda ingestion: photo OCR (Gemma 4) or iCal feed. Mock provider
+    // returns canned items for offline dev.
+    let agenda_parser: Arc<dyn AgendaParser> =
+        match std::env::var("AGENDA_PARSER").as_deref() {
+            Ok("mock") => {
+                tracing::info!("using mock agenda parser");
+                Arc::new(buddywize_ai::mock::MockAgendaParser)
+            }
+            _ => {
+                let cfg = CloudflareAgendaConfig::from_env()?;
+                tracing::info!(
+                    account = %cfg.account_id,
+                    model = %cfg.model,
+                    "using Cloudflare Gemma agenda parser"
+                );
+                Arc::new(CloudflareAgendaParser::new(cfg))
+            }
+        };
+
     let jwt = JwtConfig {
         secret: jwt_secret.clone(),
         access_ttl_secs: 15 * 60,
@@ -223,7 +252,10 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let auth_state = AuthState { db: db.clone(), jwt };
-    let course_state = CourseState { db: db.clone() };
+    let course_state = CourseState {
+        db: db.clone(),
+        agenda_parser: agenda_parser.clone(),
+    };
     let recording_state = RecordingState { db: db.clone(), storage: storage.clone(), jobs: jobs_tx };
     let admin_state = AdminState {
         db: db.clone(),

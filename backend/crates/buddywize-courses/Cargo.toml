@@ -4,10 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 axum.workspace = true
+buddywize-ai.workspace = true
 buddywize-auth.workspace = true
 buddywize-core.workspace = true
 chrono.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

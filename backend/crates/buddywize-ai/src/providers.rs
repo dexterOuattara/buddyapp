@@ -64,3 +64,68 @@ pub trait StudyGenerator: Send + Sync {
         transcript: &Transcript,
     ) -> anyhow::Result<GeneratedContent>;
 }
+
+/// One agenda item extracted from a photo (OCR) or an iCal feed.
+///
+/// The mobile app shows a confirmation screen with a list of these;
+/// the user edits and confirms, then we upsert each into
+/// `agenda_items` via the existing `POST /api/agenda` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+pub struct AgendaItemDraft {
+    pub title: String,
+    /// ISO 8601 / RFC 3339 timestamp, if the source had a clear date+time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starts_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends_at: Option<String>,
+    /// Free-form annotation: room number, teacher, etc.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+impl AgendaItemDraft {
+    /// Sanity-check a draft before we hand it to the mobile. Drops items
+    /// with empty / absurdly long titles; truncates notes; drops items
+    /// whose date fields look like garbage.
+    pub fn sanitized(self) -> Option<Self> {
+        let title = self.title.trim();
+        if title.is_empty() || title.len() > 200 {
+            return None;
+        }
+        let starts_at = self
+            .starts_at
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let ends_at = self
+            .ends_at
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let notes = self
+            .notes
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.len() <= 500)
+            .map(str::to_string);
+        Some(Self {
+            title: title.to_string(),
+            starts_at,
+            ends_at,
+            notes,
+        })
+    }
+}
+
+/// Agenda parser (OCR photo or iCal feed).
+#[async_trait]
+pub trait AgendaParser: Send + Sync {
+    /// Stable provider name, for observability.
+    fn name(&self) -> &str;
+    /// Extract agenda item drafts from the given bytes. The bytes are
+    /// either a JPEG/PNG image of a paper agenda (OCR path) or an
+    /// iCal/ICS text (calendar path) — the caller decides which.
+    async fn parse(&self, input: &[u8]) -> anyhow::Result<Vec<AgendaItemDraft>>;
+}

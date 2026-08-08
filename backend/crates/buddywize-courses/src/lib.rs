@@ -5,10 +5,13 @@
 pub mod handlers;
 pub mod study;
 
+use std::sync::Arc;
+
 use axum::{
     routing::get,
     Router,
 };
+use buddywize_ai::providers::AgendaParser;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::PgPool;
@@ -18,6 +21,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct CourseState {
     pub db: PgPool,
+    pub agenda_parser: Arc<dyn AgendaParser>,
 }
 
 pub fn router(state: CourseState) -> Router {
@@ -25,6 +29,9 @@ pub fn router(state: CourseState) -> Router {
         // agenda
         .route("/agenda", get(handlers::list_agenda).post(handlers::upsert_agenda))
         .route("/agenda/:client_uuid", axum::routing::delete(handlers::delete_agenda))
+        // agenda ingestion: photo (multipart) or iCal (JSON body)
+        .route("/agenda/parse", axum::routing::post(handlers::parse_agenda_image))
+        .route("/agenda/ical", axum::routing::post(handlers::import_ical))
         // courses
         .route("/courses", get(handlers::list_courses).post(handlers::upsert_course))
         .route("/courses/:client_uuid", axum::routing::delete(handlers::delete_course))

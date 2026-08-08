@@ -492,3 +492,99 @@ pub async fn delete_chapter(
     .await?;
     Ok(Json(row))
 }
+
+// ---------------------------------------------------------------- agenda ingestion
+
+/// Multipart upload of an agenda photo. Returns the parsed drafts
+/// for the mobile to display in a confirmation screen before saving.
+#[utoipa::path(
+    post,
+    path = "/api/agenda/parse",
+    request_body(content = String, content_type = "image/jpeg"),
+    responses((status = 200, description = "Parsed drafts", body = Vec<buddywize_ai::providers::AgendaItemDraft>))
+)]
+pub async fn parse_agenda_image(
+    State(state): State<crate::CourseState>,
+    AuthUser(_user): AuthUser,
+    mut multipart: axum::extract::Multipart,
+) -> ApiResult<Json<Vec<buddywize_ai::providers::AgendaItemDraft>>> {
+    let mut bytes: Option<Vec<u8>> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        ApiError::BadRequest(format!("invalid multipart payload: {e}"))
+    })? {
+        if field.name() == Some("image") {
+            bytes = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("failed to read image: {e}")))?
+                    .to_vec(),
+            );
+            break;
+        }
+    }
+    let bytes = bytes.ok_or_else(|| ApiError::BadRequest("missing 'image' field".into()))?;
+    let drafts = state
+        .agenda_parser
+        .parse(&bytes)
+        .await
+        .map_err(ApiError::Internal)?;
+    tracing::info!(
+        drafts = drafts.len(),
+        provider = state.agenda_parser.name(),
+        "agenda photo parsed"
+    );
+    Ok(Json(drafts))
+}
+
+/// Import from an iCal feed. Accepts either a URL (server fetches it,
+/// 10 s timeout) or a raw `text` payload the mobile already fetched.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct IcalImportRequest {
+    /// Either `url` or `text` must be present.
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/agenda/ical",
+    request_body = IcalImportRequest,
+    responses((status = 200, description = "Parsed drafts", body = Vec<buddywize_ai::providers::AgendaItemDraft>))
+)]
+pub async fn import_ical(
+    State(_state): State<crate::CourseState>,
+    AuthUser(_user): AuthUser,
+    Json(body): Json<IcalImportRequest>,
+) -> ApiResult<Json<Vec<buddywize_ai::providers::AgendaItemDraft>>> {
+    let text = match (body.url, body.text) {
+        (Some(url), None) => {
+            fetch_url(&url).await.map_err(|e| {
+                ApiError::BadRequest(format!("failed to fetch iCal URL '{url}': {e}"))
+            })?
+        }
+        (None, Some(text)) => text,
+        (Some(_), Some(_)) => {
+            return Err(ApiError::BadRequest(
+                "provide either 'url' or 'text', not both".into(),
+            ))
+        }
+        (None, None) => return Err(ApiError::BadRequest("missing 'url' or 'text'".into())),
+    };
+    let drafts = buddywize_ai::ical::parse_ical(&text).map_err(ApiError::Internal)?;
+    tracing::info!(drafts = drafts.len(), "iCal parsed");
+    Ok(Json(drafts))
+}
+
+async fn fetch_url(url: &str) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        anyhow::bail!("HTTP {}", resp.status());
+    }
+    Ok(resp.text().await?)
+}

@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../db/app_database.dart';
 import '../../providers.dart';
+import 'agenda_scan_screen.dart';
+import 'ical_import_screen.dart';
 
 class AgendaScreen extends ConsumerWidget {
   const AgendaScreen({super.key});
@@ -19,6 +21,36 @@ class AgendaScreen extends ConsumerWidget {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AgendaScanScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('Scan agenda'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ICalImportScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.event_note_outlined),
+                  label: const Text('Import iCal'),
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: sorted.isEmpty
               ? const _EmptyState()
