@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../api/friendly_error.dart';
 import '../../providers.dart';
 import 'agenda_review_screen.dart';
 
@@ -105,7 +106,7 @@ class _AgendaScanScreenState extends ConsumerState<AgendaScanScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Scan failed: $e')),
+          SnackBar(content: Text('Scan failed: ${friendlyApiError(e)}')),
         );
       }
     } finally {

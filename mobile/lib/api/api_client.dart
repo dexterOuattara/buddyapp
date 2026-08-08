@@ -123,16 +123,19 @@ class ApiClient {
   /// Send an agenda photo to the server for OCR + structuring.
   /// Returns the parsed drafts for the confirmation screen.
   Future<List<AgendaItemDraft>> parseAgendaImage(List<int> jpegBytes) async {
-    final req = http.MultipartRequest('POST', _u('agenda/parse'))
-      ..files.add(http.MultipartFile.fromBytes(
-        'image',
-        jpegBytes,
-        filename: 'agenda.jpg',
-        contentType: MediaType('image', 'jpeg'),
-      ));
-    final streamed = await req.send();
-    final resp = await http.Response.fromStream(streamed);
-    _ensureOk(resp);
+    // Goes through _withRefreshRaw so a 401 transparently refreshes
+    // the access token and retries — same pattern every other call uses.
+    final resp = await _withRefreshRaw(() async {
+      final req = http.MultipartRequest('POST', _u('agenda/parse'))
+        ..files.add(http.MultipartFile.fromBytes(
+          'image',
+          jpegBytes,
+          filename: 'agenda.jpg',
+          contentType: MediaType('image', 'jpeg'),
+        ));
+      final streamed = await req.send();
+      return http.Response.fromStream(streamed);
+    });
     final list = _decodeList(resp);
     return list
         .cast<Map<String, dynamic>>()
@@ -142,21 +145,15 @@ class ApiClient {
 
   /// Import agenda items from an iCal text blob.
   /// POST a JSON body and return the raw response (no auto-decode).
-  /// Used by endpoints whose body is a JSON array (agenda/parse, agenda/ical).
-  Future<http.Response> _postRaw(String path, Map<String, dynamic> body) async {
-    final first = await _client.post(
-      _u(path),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    if (first.statusCode != 401) return first;
-    await _ensureRefresh();
-    return _client.post(
-      _u(path),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-  }
+  /// Used by endpoints whose body is a JSON array (agenda/ical).
+  Future<http.Response> _postRaw(String path, Map<String, dynamic> body) =>
+      _withRefreshRaw(
+        () => _client.post(
+          _u(path),
+          headers: _headers,
+          body: jsonEncode(body),
+        ),
+      );
 
   Future<List<AgendaItemDraft>> importIcalText(String icsText) async {
     final resp = await _postRaw('agenda/ical', {'text': icsText});
@@ -194,6 +191,29 @@ class ApiClient {
   /// original request, and only then surfaces the failure to the caller.
   /// If the refresh itself fails (or there is no refresh token) it throws
   /// [ApiAuthException] so the auth controller can clear the local session.
+  /// Returns the raw `http.Response` so callers that need byte-level access
+  /// (e.g. multipart endpoints that must stream the body back) don't have
+  /// to re-do the decode.
+  Future<http.Response> _withRefreshRaw(
+    Future<http.Response> Function() send,
+  ) async {
+    final first = await send();
+    if (first.statusCode != 401) return first;
+
+    await _ensureRefresh();
+    final retried = await send();
+    if (retried.statusCode == 401) {
+      clearSession();
+      throw const ApiAuthException();
+    }
+    if (retried.statusCode >= 400) {
+      throw ApiException(retried.statusCode, retried.body);
+    }
+    return retried;
+  }
+
+  /// Same as [_withRefreshRaw] but decodes the response body. Use this
+  /// for JSON endpoints that don't need streaming.
   Future<Map<String, dynamic>> _withRefresh(
     Future<http.Response> Function() send,
   ) async {

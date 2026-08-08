@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../api/friendly_error.dart';
 import '../../providers.dart';
 import 'agenda_review_screen.dart';
 
@@ -52,7 +53,7 @@ class _ICalImportScreenState extends ConsumerState<ICalImportScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
+          SnackBar(content: Text('Import failed: ${friendlyApiError(e)}')),
         );
       }
     } finally {
