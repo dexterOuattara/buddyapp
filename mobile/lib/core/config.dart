@@ -8,4 +8,5 @@ class Config {
 
   static const int chunkSizeBytes = 256 * 1024; // 256 KB upload chunks
   static const Duration syncPollInterval = Duration(seconds: 45);
+  static const Duration backgroundSyncInterval = Duration(minutes: 15);
 }

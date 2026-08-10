@@ -1839,10 +1839,42 @@ class $AgendaItemsTable extends AgendaItems
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('course'),
+  );
+  static const VerificationMeta _subjectMeta = const VerificationMeta(
+    'subject',
+  );
+  @override
+  late final GeneratedColumn<String> subject = GeneratedColumn<String>(
+    'subject',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
     'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _locationMeta = const VerificationMeta(
+    'location',
+  );
+  @override
+  late final GeneratedColumn<String> location = GeneratedColumn<String>(
+    'location',
     aliasedName,
     true,
     type: DriftSqlType.string,
@@ -1868,6 +1900,53 @@ class $AgendaItemsTable extends AgendaItems
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _recurrenceMeta = const VerificationMeta(
+    'recurrence',
+  );
+  @override
+  late final GeneratedColumn<String> recurrence = GeneratedColumn<String>(
+    'recurrence',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('none'),
+  );
+  static const VerificationMeta _recurrenceUntilMeta = const VerificationMeta(
+    'recurrenceUntil',
+  );
+  @override
+  late final GeneratedColumn<DateTime> recurrenceUntil =
+      GeneratedColumn<DateTime>(
+        'recurrence_until',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _reminderMinutesMeta = const VerificationMeta(
+    'reminderMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> reminderMinutes = GeneratedColumn<int>(
+    'reminder_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
+    'chapterClientUuid',
+  );
+  @override
+  late final GeneratedColumn<String> chapterClientUuid =
+      GeneratedColumn<String>(
+        'chapter_client_uuid',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _pendingSyncMeta = const VerificationMeta(
     'pendingSync',
   );
@@ -1928,9 +2007,16 @@ class $AgendaItemsTable extends AgendaItems
     clientUuid,
     serverId,
     title,
+    kind,
+    subject,
     notes,
+    location,
     startsAt,
     endsAt,
+    recurrence,
+    recurrenceUntil,
+    reminderMinutes,
+    chapterClientUuid,
     pendingSync,
     deleted,
     syncVersion,
@@ -1973,10 +2059,28 @@ class $AgendaItemsTable extends AgendaItems
     } else if (isInserting) {
       context.missing(_titleMeta);
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('subject')) {
+      context.handle(
+        _subjectMeta,
+        subject.isAcceptableOrUnknown(data['subject']!, _subjectMeta),
+      );
+    }
     if (data.containsKey('notes')) {
       context.handle(
         _notesMeta,
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('location')) {
+      context.handle(
+        _locationMeta,
+        location.isAcceptableOrUnknown(data['location']!, _locationMeta),
       );
     }
     if (data.containsKey('starts_at')) {
@@ -1989,6 +2093,39 @@ class $AgendaItemsTable extends AgendaItems
       context.handle(
         _endsAtMeta,
         endsAt.isAcceptableOrUnknown(data['ends_at']!, _endsAtMeta),
+      );
+    }
+    if (data.containsKey('recurrence')) {
+      context.handle(
+        _recurrenceMeta,
+        recurrence.isAcceptableOrUnknown(data['recurrence']!, _recurrenceMeta),
+      );
+    }
+    if (data.containsKey('recurrence_until')) {
+      context.handle(
+        _recurrenceUntilMeta,
+        recurrenceUntil.isAcceptableOrUnknown(
+          data['recurrence_until']!,
+          _recurrenceUntilMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_minutes')) {
+      context.handle(
+        _reminderMinutesMeta,
+        reminderMinutes.isAcceptableOrUnknown(
+          data['reminder_minutes']!,
+          _reminderMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chapter_client_uuid')) {
+      context.handle(
+        _chapterClientUuidMeta,
+        chapterClientUuid.isAcceptableOrUnknown(
+          data['chapter_client_uuid']!,
+          _chapterClientUuidMeta,
+        ),
       );
     }
     if (data.containsKey('pending_sync')) {
@@ -2046,9 +2183,21 @@ class $AgendaItemsTable extends AgendaItems
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      subject: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject'],
+      ),
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
+      ),
+      location: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location'],
       ),
       startsAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -2057,6 +2206,22 @@ class $AgendaItemsTable extends AgendaItems
       endsAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}ends_at'],
+      ),
+      recurrence: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recurrence'],
+      )!,
+      recurrenceUntil: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}recurrence_until'],
+      ),
+      reminderMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_minutes'],
+      ),
+      chapterClientUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chapter_client_uuid'],
       ),
       pendingSync: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -2088,9 +2253,20 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
   final String clientUuid;
   final String? serverId;
   final String title;
+
+  /// course | revision | reminder
+  final String kind;
+  final String? subject;
   final String? notes;
+  final String? location;
   final DateTime? startsAt;
   final DateTime? endsAt;
+
+  /// none | weekly
+  final String recurrence;
+  final DateTime? recurrenceUntil;
+  final int? reminderMinutes;
+  final String? chapterClientUuid;
   final bool pendingSync;
   final bool deleted;
   final int syncVersion;
@@ -2100,9 +2276,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
     required this.clientUuid,
     this.serverId,
     required this.title,
+    required this.kind,
+    this.subject,
     this.notes,
+    this.location,
     this.startsAt,
     this.endsAt,
+    required this.recurrence,
+    this.recurrenceUntil,
+    this.reminderMinutes,
+    this.chapterClientUuid,
     required this.pendingSync,
     required this.deleted,
     required this.syncVersion,
@@ -2117,14 +2300,31 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
       map['server_id'] = Variable<String>(serverId);
     }
     map['title'] = Variable<String>(title);
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || subject != null) {
+      map['subject'] = Variable<String>(subject);
+    }
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || location != null) {
+      map['location'] = Variable<String>(location);
     }
     if (!nullToAbsent || startsAt != null) {
       map['starts_at'] = Variable<DateTime>(startsAt);
     }
     if (!nullToAbsent || endsAt != null) {
       map['ends_at'] = Variable<DateTime>(endsAt);
+    }
+    map['recurrence'] = Variable<String>(recurrence);
+    if (!nullToAbsent || recurrenceUntil != null) {
+      map['recurrence_until'] = Variable<DateTime>(recurrenceUntil);
+    }
+    if (!nullToAbsent || reminderMinutes != null) {
+      map['reminder_minutes'] = Variable<int>(reminderMinutes);
+    }
+    if (!nullToAbsent || chapterClientUuid != null) {
+      map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     }
     map['pending_sync'] = Variable<bool>(pendingSync);
     map['deleted'] = Variable<bool>(deleted);
@@ -2141,15 +2341,32 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
           ? const Value.absent()
           : Value(serverId),
       title: Value(title),
+      kind: Value(kind),
+      subject: subject == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subject),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      location: location == null && nullToAbsent
+          ? const Value.absent()
+          : Value(location),
       startsAt: startsAt == null && nullToAbsent
           ? const Value.absent()
           : Value(startsAt),
       endsAt: endsAt == null && nullToAbsent
           ? const Value.absent()
           : Value(endsAt),
+      recurrence: Value(recurrence),
+      recurrenceUntil: recurrenceUntil == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recurrenceUntil),
+      reminderMinutes: reminderMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderMinutes),
+      chapterClientUuid: chapterClientUuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chapterClientUuid),
       pendingSync: Value(pendingSync),
       deleted: Value(deleted),
       syncVersion: Value(syncVersion),
@@ -2167,9 +2384,18 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
       clientUuid: serializer.fromJson<String>(json['clientUuid']),
       serverId: serializer.fromJson<String?>(json['serverId']),
       title: serializer.fromJson<String>(json['title']),
+      kind: serializer.fromJson<String>(json['kind']),
+      subject: serializer.fromJson<String?>(json['subject']),
       notes: serializer.fromJson<String?>(json['notes']),
+      location: serializer.fromJson<String?>(json['location']),
       startsAt: serializer.fromJson<DateTime?>(json['startsAt']),
       endsAt: serializer.fromJson<DateTime?>(json['endsAt']),
+      recurrence: serializer.fromJson<String>(json['recurrence']),
+      recurrenceUntil: serializer.fromJson<DateTime?>(json['recurrenceUntil']),
+      reminderMinutes: serializer.fromJson<int?>(json['reminderMinutes']),
+      chapterClientUuid: serializer.fromJson<String?>(
+        json['chapterClientUuid'],
+      ),
       pendingSync: serializer.fromJson<bool>(json['pendingSync']),
       deleted: serializer.fromJson<bool>(json['deleted']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
@@ -2184,9 +2410,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
       'clientUuid': serializer.toJson<String>(clientUuid),
       'serverId': serializer.toJson<String?>(serverId),
       'title': serializer.toJson<String>(title),
+      'kind': serializer.toJson<String>(kind),
+      'subject': serializer.toJson<String?>(subject),
       'notes': serializer.toJson<String?>(notes),
+      'location': serializer.toJson<String?>(location),
       'startsAt': serializer.toJson<DateTime?>(startsAt),
       'endsAt': serializer.toJson<DateTime?>(endsAt),
+      'recurrence': serializer.toJson<String>(recurrence),
+      'recurrenceUntil': serializer.toJson<DateTime?>(recurrenceUntil),
+      'reminderMinutes': serializer.toJson<int?>(reminderMinutes),
+      'chapterClientUuid': serializer.toJson<String?>(chapterClientUuid),
       'pendingSync': serializer.toJson<bool>(pendingSync),
       'deleted': serializer.toJson<bool>(deleted),
       'syncVersion': serializer.toJson<int>(syncVersion),
@@ -2199,9 +2432,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
     String? clientUuid,
     Value<String?> serverId = const Value.absent(),
     String? title,
+    String? kind,
+    Value<String?> subject = const Value.absent(),
     Value<String?> notes = const Value.absent(),
+    Value<String?> location = const Value.absent(),
     Value<DateTime?> startsAt = const Value.absent(),
     Value<DateTime?> endsAt = const Value.absent(),
+    String? recurrence,
+    Value<DateTime?> recurrenceUntil = const Value.absent(),
+    Value<int?> reminderMinutes = const Value.absent(),
+    Value<String?> chapterClientUuid = const Value.absent(),
     bool? pendingSync,
     bool? deleted,
     int? syncVersion,
@@ -2211,9 +2451,22 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
     clientUuid: clientUuid ?? this.clientUuid,
     serverId: serverId.present ? serverId.value : this.serverId,
     title: title ?? this.title,
+    kind: kind ?? this.kind,
+    subject: subject.present ? subject.value : this.subject,
     notes: notes.present ? notes.value : this.notes,
+    location: location.present ? location.value : this.location,
     startsAt: startsAt.present ? startsAt.value : this.startsAt,
     endsAt: endsAt.present ? endsAt.value : this.endsAt,
+    recurrence: recurrence ?? this.recurrence,
+    recurrenceUntil: recurrenceUntil.present
+        ? recurrenceUntil.value
+        : this.recurrenceUntil,
+    reminderMinutes: reminderMinutes.present
+        ? reminderMinutes.value
+        : this.reminderMinutes,
+    chapterClientUuid: chapterClientUuid.present
+        ? chapterClientUuid.value
+        : this.chapterClientUuid,
     pendingSync: pendingSync ?? this.pendingSync,
     deleted: deleted ?? this.deleted,
     syncVersion: syncVersion ?? this.syncVersion,
@@ -2227,9 +2480,24 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
           : this.clientUuid,
       serverId: data.serverId.present ? data.serverId.value : this.serverId,
       title: data.title.present ? data.title.value : this.title,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      subject: data.subject.present ? data.subject.value : this.subject,
       notes: data.notes.present ? data.notes.value : this.notes,
+      location: data.location.present ? data.location.value : this.location,
       startsAt: data.startsAt.present ? data.startsAt.value : this.startsAt,
       endsAt: data.endsAt.present ? data.endsAt.value : this.endsAt,
+      recurrence: data.recurrence.present
+          ? data.recurrence.value
+          : this.recurrence,
+      recurrenceUntil: data.recurrenceUntil.present
+          ? data.recurrenceUntil.value
+          : this.recurrenceUntil,
+      reminderMinutes: data.reminderMinutes.present
+          ? data.reminderMinutes.value
+          : this.reminderMinutes,
+      chapterClientUuid: data.chapterClientUuid.present
+          ? data.chapterClientUuid.value
+          : this.chapterClientUuid,
       pendingSync: data.pendingSync.present
           ? data.pendingSync.value
           : this.pendingSync,
@@ -2248,9 +2516,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
           ..write('clientUuid: $clientUuid, ')
           ..write('serverId: $serverId, ')
           ..write('title: $title, ')
+          ..write('kind: $kind, ')
+          ..write('subject: $subject, ')
           ..write('notes: $notes, ')
+          ..write('location: $location, ')
           ..write('startsAt: $startsAt, ')
           ..write('endsAt: $endsAt, ')
+          ..write('recurrence: $recurrence, ')
+          ..write('recurrenceUntil: $recurrenceUntil, ')
+          ..write('reminderMinutes: $reminderMinutes, ')
+          ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('pendingSync: $pendingSync, ')
           ..write('deleted: $deleted, ')
           ..write('syncVersion: $syncVersion, ')
@@ -2265,9 +2540,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
     clientUuid,
     serverId,
     title,
+    kind,
+    subject,
     notes,
+    location,
     startsAt,
     endsAt,
+    recurrence,
+    recurrenceUntil,
+    reminderMinutes,
+    chapterClientUuid,
     pendingSync,
     deleted,
     syncVersion,
@@ -2281,9 +2563,16 @@ class AgendaItem extends DataClass implements Insertable<AgendaItem> {
           other.clientUuid == this.clientUuid &&
           other.serverId == this.serverId &&
           other.title == this.title &&
+          other.kind == this.kind &&
+          other.subject == this.subject &&
           other.notes == this.notes &&
+          other.location == this.location &&
           other.startsAt == this.startsAt &&
           other.endsAt == this.endsAt &&
+          other.recurrence == this.recurrence &&
+          other.recurrenceUntil == this.recurrenceUntil &&
+          other.reminderMinutes == this.reminderMinutes &&
+          other.chapterClientUuid == this.chapterClientUuid &&
           other.pendingSync == this.pendingSync &&
           other.deleted == this.deleted &&
           other.syncVersion == this.syncVersion &&
@@ -2295,9 +2584,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
   final Value<String> clientUuid;
   final Value<String?> serverId;
   final Value<String> title;
+  final Value<String> kind;
+  final Value<String?> subject;
   final Value<String?> notes;
+  final Value<String?> location;
   final Value<DateTime?> startsAt;
   final Value<DateTime?> endsAt;
+  final Value<String> recurrence;
+  final Value<DateTime?> recurrenceUntil;
+  final Value<int?> reminderMinutes;
+  final Value<String?> chapterClientUuid;
   final Value<bool> pendingSync;
   final Value<bool> deleted;
   final Value<int> syncVersion;
@@ -2307,9 +2603,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
     this.clientUuid = const Value.absent(),
     this.serverId = const Value.absent(),
     this.title = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.subject = const Value.absent(),
     this.notes = const Value.absent(),
+    this.location = const Value.absent(),
     this.startsAt = const Value.absent(),
     this.endsAt = const Value.absent(),
+    this.recurrence = const Value.absent(),
+    this.recurrenceUntil = const Value.absent(),
+    this.reminderMinutes = const Value.absent(),
+    this.chapterClientUuid = const Value.absent(),
     this.pendingSync = const Value.absent(),
     this.deleted = const Value.absent(),
     this.syncVersion = const Value.absent(),
@@ -2320,9 +2623,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
     required String clientUuid,
     this.serverId = const Value.absent(),
     required String title,
+    this.kind = const Value.absent(),
+    this.subject = const Value.absent(),
     this.notes = const Value.absent(),
+    this.location = const Value.absent(),
     this.startsAt = const Value.absent(),
     this.endsAt = const Value.absent(),
+    this.recurrence = const Value.absent(),
+    this.recurrenceUntil = const Value.absent(),
+    this.reminderMinutes = const Value.absent(),
+    this.chapterClientUuid = const Value.absent(),
     this.pendingSync = const Value.absent(),
     this.deleted = const Value.absent(),
     this.syncVersion = const Value.absent(),
@@ -2334,9 +2644,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
     Expression<String>? clientUuid,
     Expression<String>? serverId,
     Expression<String>? title,
+    Expression<String>? kind,
+    Expression<String>? subject,
     Expression<String>? notes,
+    Expression<String>? location,
     Expression<DateTime>? startsAt,
     Expression<DateTime>? endsAt,
+    Expression<String>? recurrence,
+    Expression<DateTime>? recurrenceUntil,
+    Expression<int>? reminderMinutes,
+    Expression<String>? chapterClientUuid,
     Expression<bool>? pendingSync,
     Expression<bool>? deleted,
     Expression<int>? syncVersion,
@@ -2347,9 +2664,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
       if (clientUuid != null) 'client_uuid': clientUuid,
       if (serverId != null) 'server_id': serverId,
       if (title != null) 'title': title,
+      if (kind != null) 'kind': kind,
+      if (subject != null) 'subject': subject,
       if (notes != null) 'notes': notes,
+      if (location != null) 'location': location,
       if (startsAt != null) 'starts_at': startsAt,
       if (endsAt != null) 'ends_at': endsAt,
+      if (recurrence != null) 'recurrence': recurrence,
+      if (recurrenceUntil != null) 'recurrence_until': recurrenceUntil,
+      if (reminderMinutes != null) 'reminder_minutes': reminderMinutes,
+      if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (pendingSync != null) 'pending_sync': pendingSync,
       if (deleted != null) 'deleted': deleted,
       if (syncVersion != null) 'sync_version': syncVersion,
@@ -2362,9 +2686,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
     Value<String>? clientUuid,
     Value<String?>? serverId,
     Value<String>? title,
+    Value<String>? kind,
+    Value<String?>? subject,
     Value<String?>? notes,
+    Value<String?>? location,
     Value<DateTime?>? startsAt,
     Value<DateTime?>? endsAt,
+    Value<String>? recurrence,
+    Value<DateTime?>? recurrenceUntil,
+    Value<int?>? reminderMinutes,
+    Value<String?>? chapterClientUuid,
     Value<bool>? pendingSync,
     Value<bool>? deleted,
     Value<int>? syncVersion,
@@ -2375,9 +2706,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
       clientUuid: clientUuid ?? this.clientUuid,
       serverId: serverId ?? this.serverId,
       title: title ?? this.title,
+      kind: kind ?? this.kind,
+      subject: subject ?? this.subject,
       notes: notes ?? this.notes,
+      location: location ?? this.location,
       startsAt: startsAt ?? this.startsAt,
       endsAt: endsAt ?? this.endsAt,
+      recurrence: recurrence ?? this.recurrence,
+      recurrenceUntil: recurrenceUntil ?? this.recurrenceUntil,
+      reminderMinutes: reminderMinutes ?? this.reminderMinutes,
+      chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       pendingSync: pendingSync ?? this.pendingSync,
       deleted: deleted ?? this.deleted,
       syncVersion: syncVersion ?? this.syncVersion,
@@ -2400,14 +2738,35 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
     if (title.present) {
       map['title'] = Variable<String>(title.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (subject.present) {
+      map['subject'] = Variable<String>(subject.value);
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
+    }
+    if (location.present) {
+      map['location'] = Variable<String>(location.value);
     }
     if (startsAt.present) {
       map['starts_at'] = Variable<DateTime>(startsAt.value);
     }
     if (endsAt.present) {
       map['ends_at'] = Variable<DateTime>(endsAt.value);
+    }
+    if (recurrence.present) {
+      map['recurrence'] = Variable<String>(recurrence.value);
+    }
+    if (recurrenceUntil.present) {
+      map['recurrence_until'] = Variable<DateTime>(recurrenceUntil.value);
+    }
+    if (reminderMinutes.present) {
+      map['reminder_minutes'] = Variable<int>(reminderMinutes.value);
+    }
+    if (chapterClientUuid.present) {
+      map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
     }
     if (pendingSync.present) {
       map['pending_sync'] = Variable<bool>(pendingSync.value);
@@ -2431,9 +2790,16 @@ class AgendaItemsCompanion extends UpdateCompanion<AgendaItem> {
           ..write('clientUuid: $clientUuid, ')
           ..write('serverId: $serverId, ')
           ..write('title: $title, ')
+          ..write('kind: $kind, ')
+          ..write('subject: $subject, ')
           ..write('notes: $notes, ')
+          ..write('location: $location, ')
           ..write('startsAt: $startsAt, ')
           ..write('endsAt: $endsAt, ')
+          ..write('recurrence: $recurrence, ')
+          ..write('recurrenceUntil: $recurrenceUntil, ')
+          ..write('reminderMinutes: $reminderMinutes, ')
+          ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('pendingSync: $pendingSync, ')
           ..write('deleted: $deleted, ')
           ..write('syncVersion: $syncVersion, ')
@@ -3067,6 +3433,533 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
   }
 }
 
+class $TranscriptsTable extends Transcripts
+    with TableInfo<$TranscriptsTable, Transcript> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TranscriptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _recordingServerIdMeta = const VerificationMeta(
+    'recordingServerId',
+  );
+  @override
+  late final GeneratedColumn<String> recordingServerId =
+      GeneratedColumn<String>(
+        'recording_server_id',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _recordingClientUuidMeta =
+      const VerificationMeta('recordingClientUuid');
+  @override
+  late final GeneratedColumn<String> recordingClientUuid =
+      GeneratedColumn<String>(
+        'recording_client_uuid',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+        defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+      );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _languageMeta = const VerificationMeta(
+    'language',
+  );
+  @override
+  late final GeneratedColumn<String> language = GeneratedColumn<String>(
+    'language',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _segmentsJsonMeta = const VerificationMeta(
+    'segmentsJson',
+  );
+  @override
+  late final GeneratedColumn<String> segmentsJson = GeneratedColumn<String>(
+    'segments_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _syncVersionMeta = const VerificationMeta(
+    'syncVersion',
+  );
+  @override
+  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
+    'sync_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    serverId,
+    recordingServerId,
+    recordingClientUuid,
+    content,
+    language,
+    segmentsJson,
+    syncVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'transcripts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Transcript> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_serverIdMeta);
+    }
+    if (data.containsKey('recording_server_id')) {
+      context.handle(
+        _recordingServerIdMeta,
+        recordingServerId.isAcceptableOrUnknown(
+          data['recording_server_id']!,
+          _recordingServerIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_recordingServerIdMeta);
+    }
+    if (data.containsKey('recording_client_uuid')) {
+      context.handle(
+        _recordingClientUuidMeta,
+        recordingClientUuid.isAcceptableOrUnknown(
+          data['recording_client_uuid']!,
+          _recordingClientUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_recordingClientUuidMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('language')) {
+      context.handle(
+        _languageMeta,
+        language.isAcceptableOrUnknown(data['language']!, _languageMeta),
+      );
+    }
+    if (data.containsKey('segments_json')) {
+      context.handle(
+        _segmentsJsonMeta,
+        segmentsJson.isAcceptableOrUnknown(
+          data['segments_json']!,
+          _segmentsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sync_version')) {
+      context.handle(
+        _syncVersionMeta,
+        syncVersion.isAcceptableOrUnknown(
+          data['sync_version']!,
+          _syncVersionMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Transcript map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Transcript(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
+      )!,
+      recordingServerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recording_server_id'],
+      )!,
+      recordingClientUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recording_client_uuid'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+      language: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}language'],
+      ),
+      segmentsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}segments_json'],
+      )!,
+      syncVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_version'],
+      )!,
+    );
+  }
+
+  @override
+  $TranscriptsTable createAlias(String alias) {
+    return $TranscriptsTable(attachedDatabase, alias);
+  }
+}
+
+class Transcript extends DataClass implements Insertable<Transcript> {
+  final int id;
+  final String serverId;
+  final String recordingServerId;
+  final String recordingClientUuid;
+  final String content;
+  final String? language;
+  final String segmentsJson;
+  final int syncVersion;
+  const Transcript({
+    required this.id,
+    required this.serverId,
+    required this.recordingServerId,
+    required this.recordingClientUuid,
+    required this.content,
+    this.language,
+    required this.segmentsJson,
+    required this.syncVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['server_id'] = Variable<String>(serverId);
+    map['recording_server_id'] = Variable<String>(recordingServerId);
+    map['recording_client_uuid'] = Variable<String>(recordingClientUuid);
+    map['content'] = Variable<String>(content);
+    if (!nullToAbsent || language != null) {
+      map['language'] = Variable<String>(language);
+    }
+    map['segments_json'] = Variable<String>(segmentsJson);
+    map['sync_version'] = Variable<int>(syncVersion);
+    return map;
+  }
+
+  TranscriptsCompanion toCompanion(bool nullToAbsent) {
+    return TranscriptsCompanion(
+      id: Value(id),
+      serverId: Value(serverId),
+      recordingServerId: Value(recordingServerId),
+      recordingClientUuid: Value(recordingClientUuid),
+      content: Value(content),
+      language: language == null && nullToAbsent
+          ? const Value.absent()
+          : Value(language),
+      segmentsJson: Value(segmentsJson),
+      syncVersion: Value(syncVersion),
+    );
+  }
+
+  factory Transcript.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Transcript(
+      id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<String>(json['serverId']),
+      recordingServerId: serializer.fromJson<String>(json['recordingServerId']),
+      recordingClientUuid: serializer.fromJson<String>(
+        json['recordingClientUuid'],
+      ),
+      content: serializer.fromJson<String>(json['content']),
+      language: serializer.fromJson<String?>(json['language']),
+      segmentsJson: serializer.fromJson<String>(json['segmentsJson']),
+      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<String>(serverId),
+      'recordingServerId': serializer.toJson<String>(recordingServerId),
+      'recordingClientUuid': serializer.toJson<String>(recordingClientUuid),
+      'content': serializer.toJson<String>(content),
+      'language': serializer.toJson<String?>(language),
+      'segmentsJson': serializer.toJson<String>(segmentsJson),
+      'syncVersion': serializer.toJson<int>(syncVersion),
+    };
+  }
+
+  Transcript copyWith({
+    int? id,
+    String? serverId,
+    String? recordingServerId,
+    String? recordingClientUuid,
+    String? content,
+    Value<String?> language = const Value.absent(),
+    String? segmentsJson,
+    int? syncVersion,
+  }) => Transcript(
+    id: id ?? this.id,
+    serverId: serverId ?? this.serverId,
+    recordingServerId: recordingServerId ?? this.recordingServerId,
+    recordingClientUuid: recordingClientUuid ?? this.recordingClientUuid,
+    content: content ?? this.content,
+    language: language.present ? language.value : this.language,
+    segmentsJson: segmentsJson ?? this.segmentsJson,
+    syncVersion: syncVersion ?? this.syncVersion,
+  );
+  Transcript copyWithCompanion(TranscriptsCompanion data) {
+    return Transcript(
+      id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      recordingServerId: data.recordingServerId.present
+          ? data.recordingServerId.value
+          : this.recordingServerId,
+      recordingClientUuid: data.recordingClientUuid.present
+          ? data.recordingClientUuid.value
+          : this.recordingClientUuid,
+      content: data.content.present ? data.content.value : this.content,
+      language: data.language.present ? data.language.value : this.language,
+      segmentsJson: data.segmentsJson.present
+          ? data.segmentsJson.value
+          : this.segmentsJson,
+      syncVersion: data.syncVersion.present
+          ? data.syncVersion.value
+          : this.syncVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Transcript(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
+          ..write('recordingClientUuid: $recordingClientUuid, ')
+          ..write('content: $content, ')
+          ..write('language: $language, ')
+          ..write('segmentsJson: $segmentsJson, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    serverId,
+    recordingServerId,
+    recordingClientUuid,
+    content,
+    language,
+    segmentsJson,
+    syncVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Transcript &&
+          other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.recordingServerId == this.recordingServerId &&
+          other.recordingClientUuid == this.recordingClientUuid &&
+          other.content == this.content &&
+          other.language == this.language &&
+          other.segmentsJson == this.segmentsJson &&
+          other.syncVersion == this.syncVersion);
+}
+
+class TranscriptsCompanion extends UpdateCompanion<Transcript> {
+  final Value<int> id;
+  final Value<String> serverId;
+  final Value<String> recordingServerId;
+  final Value<String> recordingClientUuid;
+  final Value<String> content;
+  final Value<String?> language;
+  final Value<String> segmentsJson;
+  final Value<int> syncVersion;
+  const TranscriptsCompanion({
+    this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
+    this.recordingClientUuid = const Value.absent(),
+    this.content = const Value.absent(),
+    this.language = const Value.absent(),
+    this.segmentsJson = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+  });
+  TranscriptsCompanion.insert({
+    this.id = const Value.absent(),
+    required String serverId,
+    required String recordingServerId,
+    required String recordingClientUuid,
+    required String content,
+    this.language = const Value.absent(),
+    this.segmentsJson = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+  }) : serverId = Value(serverId),
+       recordingServerId = Value(recordingServerId),
+       recordingClientUuid = Value(recordingClientUuid),
+       content = Value(content);
+  static Insertable<Transcript> custom({
+    Expression<int>? id,
+    Expression<String>? serverId,
+    Expression<String>? recordingServerId,
+    Expression<String>? recordingClientUuid,
+    Expression<String>? content,
+    Expression<String>? language,
+    Expression<String>? segmentsJson,
+    Expression<int>? syncVersion,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (recordingServerId != null) 'recording_server_id': recordingServerId,
+      if (recordingClientUuid != null)
+        'recording_client_uuid': recordingClientUuid,
+      if (content != null) 'content': content,
+      if (language != null) 'language': language,
+      if (segmentsJson != null) 'segments_json': segmentsJson,
+      if (syncVersion != null) 'sync_version': syncVersion,
+    });
+  }
+
+  TranscriptsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? serverId,
+    Value<String>? recordingServerId,
+    Value<String>? recordingClientUuid,
+    Value<String>? content,
+    Value<String?>? language,
+    Value<String>? segmentsJson,
+    Value<int>? syncVersion,
+  }) {
+    return TranscriptsCompanion(
+      id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      recordingServerId: recordingServerId ?? this.recordingServerId,
+      recordingClientUuid: recordingClientUuid ?? this.recordingClientUuid,
+      content: content ?? this.content,
+      language: language ?? this.language,
+      segmentsJson: segmentsJson ?? this.segmentsJson,
+      syncVersion: syncVersion ?? this.syncVersion,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (recordingServerId.present) {
+      map['recording_server_id'] = Variable<String>(recordingServerId.value);
+    }
+    if (recordingClientUuid.present) {
+      map['recording_client_uuid'] = Variable<String>(
+        recordingClientUuid.value,
+      );
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (language.present) {
+      map['language'] = Variable<String>(language.value);
+    }
+    if (segmentsJson.present) {
+      map['segments_json'] = Variable<String>(segmentsJson.value);
+    }
+    if (syncVersion.present) {
+      map['sync_version'] = Variable<int>(syncVersion.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TranscriptsCompanion(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
+          ..write('recordingClientUuid: $recordingClientUuid, ')
+          ..write('content: $content, ')
+          ..write('language: $language, ')
+          ..write('segmentsJson: $segmentsJson, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SummariesTable extends Summaries
     with TableInfo<$SummariesTable, Summary> {
   @override
@@ -3086,6 +3979,29 @@ class $SummariesTable extends Summaries
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordingServerIdMeta = const VerificationMeta(
+    'recordingServerId',
+  );
+  @override
+  late final GeneratedColumn<String> recordingServerId =
+      GeneratedColumn<String>(
+        'recording_server_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -3108,6 +4024,17 @@ class $SummariesTable extends Summaries
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _structuredJsonMeta = const VerificationMeta(
+    'structuredJson',
+  );
+  @override
+  late final GeneratedColumn<String> structuredJson = GeneratedColumn<String>(
+    'structured_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
@@ -3134,8 +4061,11 @@ class $SummariesTable extends Summaries
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    serverId,
+    recordingServerId,
     chapterClientUuid,
     contentMd,
+    structuredJson,
     status,
     syncVersion,
   ];
@@ -3153,6 +4083,21 @@ class $SummariesTable extends Summaries
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    }
+    if (data.containsKey('recording_server_id')) {
+      context.handle(
+        _recordingServerIdMeta,
+        recordingServerId.isAcceptableOrUnknown(
+          data['recording_server_id']!,
+          _recordingServerIdMeta,
+        ),
+      );
     }
     if (data.containsKey('chapter_client_uuid')) {
       context.handle(
@@ -3172,6 +4117,15 @@ class $SummariesTable extends Summaries
       );
     } else if (isInserting) {
       context.missing(_contentMdMeta);
+    }
+    if (data.containsKey('structured_json')) {
+      context.handle(
+        _structuredJsonMeta,
+        structuredJson.isAcceptableOrUnknown(
+          data['structured_json']!,
+          _structuredJsonMeta,
+        ),
+      );
     }
     if (data.containsKey('status')) {
       context.handle(
@@ -3201,6 +4155,14 @@ class $SummariesTable extends Summaries
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
+      ),
+      recordingServerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recording_server_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -3209,6 +4171,10 @@ class $SummariesTable extends Summaries
         DriftSqlType.string,
         data['${effectivePrefix}content_md'],
       )!,
+      structuredJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}structured_json'],
+      ),
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -3228,14 +4194,20 @@ class $SummariesTable extends Summaries
 
 class Summary extends DataClass implements Insertable<Summary> {
   final int id;
+  final String? serverId;
+  final String? recordingServerId;
   final String chapterClientUuid;
   final String contentMd;
+  final String? structuredJson;
   final String status;
   final int syncVersion;
   const Summary({
     required this.id,
+    this.serverId,
+    this.recordingServerId,
     required this.chapterClientUuid,
     required this.contentMd,
+    this.structuredJson,
     required this.status,
     required this.syncVersion,
   });
@@ -3243,8 +4215,17 @@ class Summary extends DataClass implements Insertable<Summary> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<String>(serverId);
+    }
+    if (!nullToAbsent || recordingServerId != null) {
+      map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['content_md'] = Variable<String>(contentMd);
+    if (!nullToAbsent || structuredJson != null) {
+      map['structured_json'] = Variable<String>(structuredJson);
+    }
     map['status'] = Variable<String>(status);
     map['sync_version'] = Variable<int>(syncVersion);
     return map;
@@ -3253,8 +4234,17 @@ class Summary extends DataClass implements Insertable<Summary> {
   SummariesCompanion toCompanion(bool nullToAbsent) {
     return SummariesCompanion(
       id: Value(id),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      recordingServerId: recordingServerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recordingServerId),
       chapterClientUuid: Value(chapterClientUuid),
       contentMd: Value(contentMd),
+      structuredJson: structuredJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(structuredJson),
       status: Value(status),
       syncVersion: Value(syncVersion),
     );
@@ -3267,8 +4257,13 @@ class Summary extends DataClass implements Insertable<Summary> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Summary(
       id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<String?>(json['serverId']),
+      recordingServerId: serializer.fromJson<String?>(
+        json['recordingServerId'],
+      ),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       contentMd: serializer.fromJson<String>(json['contentMd']),
+      structuredJson: serializer.fromJson<String?>(json['structuredJson']),
       status: serializer.fromJson<String>(json['status']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
     );
@@ -3278,8 +4273,11 @@ class Summary extends DataClass implements Insertable<Summary> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<String?>(serverId),
+      'recordingServerId': serializer.toJson<String?>(recordingServerId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'contentMd': serializer.toJson<String>(contentMd),
+      'structuredJson': serializer.toJson<String?>(structuredJson),
       'status': serializer.toJson<String>(status),
       'syncVersion': serializer.toJson<int>(syncVersion),
     };
@@ -3287,24 +4285,41 @@ class Summary extends DataClass implements Insertable<Summary> {
 
   Summary copyWith({
     int? id,
+    Value<String?> serverId = const Value.absent(),
+    Value<String?> recordingServerId = const Value.absent(),
     String? chapterClientUuid,
     String? contentMd,
+    Value<String?> structuredJson = const Value.absent(),
     String? status,
     int? syncVersion,
   }) => Summary(
     id: id ?? this.id,
+    serverId: serverId.present ? serverId.value : this.serverId,
+    recordingServerId: recordingServerId.present
+        ? recordingServerId.value
+        : this.recordingServerId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     contentMd: contentMd ?? this.contentMd,
+    structuredJson: structuredJson.present
+        ? structuredJson.value
+        : this.structuredJson,
     status: status ?? this.status,
     syncVersion: syncVersion ?? this.syncVersion,
   );
   Summary copyWithCompanion(SummariesCompanion data) {
     return Summary(
       id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      recordingServerId: data.recordingServerId.present
+          ? data.recordingServerId.value
+          : this.recordingServerId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
       contentMd: data.contentMd.present ? data.contentMd.value : this.contentMd,
+      structuredJson: data.structuredJson.present
+          ? data.structuredJson.value
+          : this.structuredJson,
       status: data.status.present ? data.status.value : this.status,
       syncVersion: data.syncVersion.present
           ? data.syncVersion.value
@@ -3316,8 +4331,11 @@ class Summary extends DataClass implements Insertable<Summary> {
   String toString() {
     return (StringBuffer('Summary(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('contentMd: $contentMd, ')
+          ..write('structuredJson: $structuredJson, ')
           ..write('status: $status, ')
           ..write('syncVersion: $syncVersion')
           ..write(')'))
@@ -3325,51 +4343,77 @@ class Summary extends DataClass implements Insertable<Summary> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, chapterClientUuid, contentMd, status, syncVersion);
+  int get hashCode => Object.hash(
+    id,
+    serverId,
+    recordingServerId,
+    chapterClientUuid,
+    contentMd,
+    structuredJson,
+    status,
+    syncVersion,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Summary &&
           other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.recordingServerId == this.recordingServerId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.contentMd == this.contentMd &&
+          other.structuredJson == this.structuredJson &&
           other.status == this.status &&
           other.syncVersion == this.syncVersion);
 }
 
 class SummariesCompanion extends UpdateCompanion<Summary> {
   final Value<int> id;
+  final Value<String?> serverId;
+  final Value<String?> recordingServerId;
   final Value<String> chapterClientUuid;
   final Value<String> contentMd;
+  final Value<String?> structuredJson;
   final Value<String> status;
   final Value<int> syncVersion;
   const SummariesCompanion({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.contentMd = const Value.absent(),
+    this.structuredJson = const Value.absent(),
     this.status = const Value.absent(),
     this.syncVersion = const Value.absent(),
   });
   SummariesCompanion.insert({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     required String chapterClientUuid,
     required String contentMd,
+    this.structuredJson = const Value.absent(),
     this.status = const Value.absent(),
     this.syncVersion = const Value.absent(),
   }) : chapterClientUuid = Value(chapterClientUuid),
        contentMd = Value(contentMd);
   static Insertable<Summary> custom({
     Expression<int>? id,
+    Expression<String>? serverId,
+    Expression<String>? recordingServerId,
     Expression<String>? chapterClientUuid,
     Expression<String>? contentMd,
+    Expression<String>? structuredJson,
     Expression<String>? status,
     Expression<int>? syncVersion,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (recordingServerId != null) 'recording_server_id': recordingServerId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (contentMd != null) 'content_md': contentMd,
+      if (structuredJson != null) 'structured_json': structuredJson,
       if (status != null) 'status': status,
       if (syncVersion != null) 'sync_version': syncVersion,
     });
@@ -3377,15 +4421,21 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
 
   SummariesCompanion copyWith({
     Value<int>? id,
+    Value<String?>? serverId,
+    Value<String?>? recordingServerId,
     Value<String>? chapterClientUuid,
     Value<String>? contentMd,
+    Value<String?>? structuredJson,
     Value<String>? status,
     Value<int>? syncVersion,
   }) {
     return SummariesCompanion(
       id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      recordingServerId: recordingServerId ?? this.recordingServerId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       contentMd: contentMd ?? this.contentMd,
+      structuredJson: structuredJson ?? this.structuredJson,
       status: status ?? this.status,
       syncVersion: syncVersion ?? this.syncVersion,
     );
@@ -3397,11 +4447,20 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (recordingServerId.present) {
+      map['recording_server_id'] = Variable<String>(recordingServerId.value);
+    }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
     }
     if (contentMd.present) {
       map['content_md'] = Variable<String>(contentMd.value);
+    }
+    if (structuredJson.present) {
+      map['structured_json'] = Variable<String>(structuredJson.value);
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
@@ -3416,8 +4475,11 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   String toString() {
     return (StringBuffer('SummariesCompanion(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('contentMd: $contentMd, ')
+          ..write('structuredJson: $structuredJson, ')
           ..write('status: $status, ')
           ..write('syncVersion: $syncVersion')
           ..write(')'))
@@ -3444,6 +4506,29 @@ class $ExercisesTable extends Exercises
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordingServerIdMeta = const VerificationMeta(
+    'recordingServerId',
+  );
+  @override
+  late final GeneratedColumn<String> recordingServerId =
+      GeneratedColumn<String>(
+        'recording_server_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -3492,6 +4577,8 @@ class $ExercisesTable extends Exercises
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    serverId,
+    recordingServerId,
     chapterClientUuid,
     itemsJson,
     status,
@@ -3511,6 +4598,21 @@ class $ExercisesTable extends Exercises
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    }
+    if (data.containsKey('recording_server_id')) {
+      context.handle(
+        _recordingServerIdMeta,
+        recordingServerId.isAcceptableOrUnknown(
+          data['recording_server_id']!,
+          _recordingServerIdMeta,
+        ),
+      );
     }
     if (data.containsKey('chapter_client_uuid')) {
       context.handle(
@@ -3559,6 +4661,14 @@ class $ExercisesTable extends Exercises
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
+      ),
+      recordingServerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recording_server_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -3586,12 +4696,16 @@ class $ExercisesTable extends Exercises
 
 class Exercise extends DataClass implements Insertable<Exercise> {
   final int id;
+  final String? serverId;
+  final String? recordingServerId;
   final String chapterClientUuid;
   final String itemsJson;
   final String status;
   final int syncVersion;
   const Exercise({
     required this.id,
+    this.serverId,
+    this.recordingServerId,
     required this.chapterClientUuid,
     required this.itemsJson,
     required this.status,
@@ -3601,6 +4715,12 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<String>(serverId);
+    }
+    if (!nullToAbsent || recordingServerId != null) {
+      map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['items_json'] = Variable<String>(itemsJson);
     map['status'] = Variable<String>(status);
@@ -3611,6 +4731,12 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   ExercisesCompanion toCompanion(bool nullToAbsent) {
     return ExercisesCompanion(
       id: Value(id),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      recordingServerId: recordingServerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recordingServerId),
       chapterClientUuid: Value(chapterClientUuid),
       itemsJson: Value(itemsJson),
       status: Value(status),
@@ -3625,6 +4751,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Exercise(
       id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<String?>(json['serverId']),
+      recordingServerId: serializer.fromJson<String?>(
+        json['recordingServerId'],
+      ),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       itemsJson: serializer.fromJson<String>(json['itemsJson']),
       status: serializer.fromJson<String>(json['status']),
@@ -3636,6 +4766,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<String?>(serverId),
+      'recordingServerId': serializer.toJson<String?>(recordingServerId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'itemsJson': serializer.toJson<String>(itemsJson),
       'status': serializer.toJson<String>(status),
@@ -3645,12 +4777,18 @@ class Exercise extends DataClass implements Insertable<Exercise> {
 
   Exercise copyWith({
     int? id,
+    Value<String?> serverId = const Value.absent(),
+    Value<String?> recordingServerId = const Value.absent(),
     String? chapterClientUuid,
     String? itemsJson,
     String? status,
     int? syncVersion,
   }) => Exercise(
     id: id ?? this.id,
+    serverId: serverId.present ? serverId.value : this.serverId,
+    recordingServerId: recordingServerId.present
+        ? recordingServerId.value
+        : this.recordingServerId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     itemsJson: itemsJson ?? this.itemsJson,
     status: status ?? this.status,
@@ -3659,6 +4797,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
       id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      recordingServerId: data.recordingServerId.present
+          ? data.recordingServerId.value
+          : this.recordingServerId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
@@ -3674,6 +4816,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   String toString() {
     return (StringBuffer('Exercise(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('itemsJson: $itemsJson, ')
           ..write('status: $status, ')
@@ -3683,13 +4827,22 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, chapterClientUuid, itemsJson, status, syncVersion);
+  int get hashCode => Object.hash(
+    id,
+    serverId,
+    recordingServerId,
+    chapterClientUuid,
+    itemsJson,
+    status,
+    syncVersion,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Exercise &&
           other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.recordingServerId == this.recordingServerId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.itemsJson == this.itemsJson &&
           other.status == this.status &&
@@ -3698,12 +4851,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<int> id;
+  final Value<String?> serverId;
+  final Value<String?> recordingServerId;
   final Value<String> chapterClientUuid;
   final Value<String> itemsJson;
   final Value<String> status;
   final Value<int> syncVersion;
   const ExercisesCompanion({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.itemsJson = const Value.absent(),
     this.status = const Value.absent(),
@@ -3711,6 +4868,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   });
   ExercisesCompanion.insert({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     required String chapterClientUuid,
     required String itemsJson,
     this.status = const Value.absent(),
@@ -3719,6 +4878,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
        itemsJson = Value(itemsJson);
   static Insertable<Exercise> custom({
     Expression<int>? id,
+    Expression<String>? serverId,
+    Expression<String>? recordingServerId,
     Expression<String>? chapterClientUuid,
     Expression<String>? itemsJson,
     Expression<String>? status,
@@ -3726,6 +4887,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (recordingServerId != null) 'recording_server_id': recordingServerId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (itemsJson != null) 'items_json': itemsJson,
       if (status != null) 'status': status,
@@ -3735,6 +4898,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
 
   ExercisesCompanion copyWith({
     Value<int>? id,
+    Value<String?>? serverId,
+    Value<String?>? recordingServerId,
     Value<String>? chapterClientUuid,
     Value<String>? itemsJson,
     Value<String>? status,
@@ -3742,6 +4907,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   }) {
     return ExercisesCompanion(
       id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      recordingServerId: recordingServerId ?? this.recordingServerId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       itemsJson: itemsJson ?? this.itemsJson,
       status: status ?? this.status,
@@ -3754,6 +4921,12 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (recordingServerId.present) {
+      map['recording_server_id'] = Variable<String>(recordingServerId.value);
     }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
@@ -3774,6 +4947,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   String toString() {
     return (StringBuffer('ExercisesCompanion(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('itemsJson: $itemsJson, ')
           ..write('status: $status, ')
@@ -3801,6 +4976,29 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordingServerIdMeta = const VerificationMeta(
+    'recordingServerId',
+  );
+  @override
+  late final GeneratedColumn<String> recordingServerId =
+      GeneratedColumn<String>(
+        'recording_server_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -3849,6 +5047,8 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    serverId,
+    recordingServerId,
     chapterClientUuid,
     questionsJson,
     status,
@@ -3868,6 +5068,21 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    }
+    if (data.containsKey('recording_server_id')) {
+      context.handle(
+        _recordingServerIdMeta,
+        recordingServerId.isAcceptableOrUnknown(
+          data['recording_server_id']!,
+          _recordingServerIdMeta,
+        ),
+      );
     }
     if (data.containsKey('chapter_client_uuid')) {
       context.handle(
@@ -3919,6 +5134,14 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
+      ),
+      recordingServerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recording_server_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -3946,12 +5169,16 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
 
 class Quizze extends DataClass implements Insertable<Quizze> {
   final int id;
+  final String? serverId;
+  final String? recordingServerId;
   final String chapterClientUuid;
   final String questionsJson;
   final String status;
   final int syncVersion;
   const Quizze({
     required this.id,
+    this.serverId,
+    this.recordingServerId,
     required this.chapterClientUuid,
     required this.questionsJson,
     required this.status,
@@ -3961,6 +5188,12 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<String>(serverId);
+    }
+    if (!nullToAbsent || recordingServerId != null) {
+      map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['questions_json'] = Variable<String>(questionsJson);
     map['status'] = Variable<String>(status);
@@ -3971,6 +5204,12 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   QuizzesCompanion toCompanion(bool nullToAbsent) {
     return QuizzesCompanion(
       id: Value(id),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      recordingServerId: recordingServerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recordingServerId),
       chapterClientUuid: Value(chapterClientUuid),
       questionsJson: Value(questionsJson),
       status: Value(status),
@@ -3985,6 +5224,10 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Quizze(
       id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<String?>(json['serverId']),
+      recordingServerId: serializer.fromJson<String?>(
+        json['recordingServerId'],
+      ),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       questionsJson: serializer.fromJson<String>(json['questionsJson']),
       status: serializer.fromJson<String>(json['status']),
@@ -3996,6 +5239,8 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<String?>(serverId),
+      'recordingServerId': serializer.toJson<String?>(recordingServerId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'questionsJson': serializer.toJson<String>(questionsJson),
       'status': serializer.toJson<String>(status),
@@ -4005,12 +5250,18 @@ class Quizze extends DataClass implements Insertable<Quizze> {
 
   Quizze copyWith({
     int? id,
+    Value<String?> serverId = const Value.absent(),
+    Value<String?> recordingServerId = const Value.absent(),
     String? chapterClientUuid,
     String? questionsJson,
     String? status,
     int? syncVersion,
   }) => Quizze(
     id: id ?? this.id,
+    serverId: serverId.present ? serverId.value : this.serverId,
+    recordingServerId: recordingServerId.present
+        ? recordingServerId.value
+        : this.recordingServerId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     questionsJson: questionsJson ?? this.questionsJson,
     status: status ?? this.status,
@@ -4019,6 +5270,10 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   Quizze copyWithCompanion(QuizzesCompanion data) {
     return Quizze(
       id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      recordingServerId: data.recordingServerId.present
+          ? data.recordingServerId.value
+          : this.recordingServerId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
@@ -4036,6 +5291,8 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   String toString() {
     return (StringBuffer('Quizze(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('questionsJson: $questionsJson, ')
           ..write('status: $status, ')
@@ -4045,13 +5302,22 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, chapterClientUuid, questionsJson, status, syncVersion);
+  int get hashCode => Object.hash(
+    id,
+    serverId,
+    recordingServerId,
+    chapterClientUuid,
+    questionsJson,
+    status,
+    syncVersion,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Quizze &&
           other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.recordingServerId == this.recordingServerId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.questionsJson == this.questionsJson &&
           other.status == this.status &&
@@ -4060,12 +5326,16 @@ class Quizze extends DataClass implements Insertable<Quizze> {
 
 class QuizzesCompanion extends UpdateCompanion<Quizze> {
   final Value<int> id;
+  final Value<String?> serverId;
+  final Value<String?> recordingServerId;
   final Value<String> chapterClientUuid;
   final Value<String> questionsJson;
   final Value<String> status;
   final Value<int> syncVersion;
   const QuizzesCompanion({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.questionsJson = const Value.absent(),
     this.status = const Value.absent(),
@@ -4073,6 +5343,8 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
   });
   QuizzesCompanion.insert({
     this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.recordingServerId = const Value.absent(),
     required String chapterClientUuid,
     required String questionsJson,
     this.status = const Value.absent(),
@@ -4081,6 +5353,8 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
        questionsJson = Value(questionsJson);
   static Insertable<Quizze> custom({
     Expression<int>? id,
+    Expression<String>? serverId,
+    Expression<String>? recordingServerId,
     Expression<String>? chapterClientUuid,
     Expression<String>? questionsJson,
     Expression<String>? status,
@@ -4088,6 +5362,8 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (recordingServerId != null) 'recording_server_id': recordingServerId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (questionsJson != null) 'questions_json': questionsJson,
       if (status != null) 'status': status,
@@ -4097,6 +5373,8 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
 
   QuizzesCompanion copyWith({
     Value<int>? id,
+    Value<String?>? serverId,
+    Value<String?>? recordingServerId,
     Value<String>? chapterClientUuid,
     Value<String>? questionsJson,
     Value<String>? status,
@@ -4104,6 +5382,8 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
   }) {
     return QuizzesCompanion(
       id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      recordingServerId: recordingServerId ?? this.recordingServerId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       questionsJson: questionsJson ?? this.questionsJson,
       status: status ?? this.status,
@@ -4116,6 +5396,12 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (recordingServerId.present) {
+      map['recording_server_id'] = Variable<String>(recordingServerId.value);
     }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
@@ -4136,10 +5422,630 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
   String toString() {
     return (StringBuffer('QuizzesCompanion(')
           ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('recordingServerId: $recordingServerId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('questionsJson: $questionsJson, ')
           ..write('status: $status, ')
           ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $QuizAttemptsTable extends QuizAttempts
+    with TableInfo<$QuizAttemptsTable, QuizAttempt> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $QuizAttemptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _clientUuidMeta = const VerificationMeta(
+    'clientUuid',
+  );
+  @override
+  late final GeneratedColumn<String> clientUuid = GeneratedColumn<String>(
+    'client_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+    'server_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _quizServerIdMeta = const VerificationMeta(
+    'quizServerId',
+  );
+  @override
+  late final GeneratedColumn<String> quizServerId = GeneratedColumn<String>(
+    'quiz_server_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
+    'chapterClientUuid',
+  );
+  @override
+  late final GeneratedColumn<String> chapterClientUuid =
+      GeneratedColumn<String>(
+        'chapter_client_uuid',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _scoreMeta = const VerificationMeta('score');
+  @override
+  late final GeneratedColumn<int> score = GeneratedColumn<int>(
+    'score',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _totalMeta = const VerificationMeta('total');
+  @override
+  late final GeneratedColumn<int> total = GeneratedColumn<int>(
+    'total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _answersJsonMeta = const VerificationMeta(
+    'answersJson',
+  );
+  @override
+  late final GeneratedColumn<String> answersJson = GeneratedColumn<String>(
+    'answers_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pendingSyncMeta = const VerificationMeta(
+    'pendingSync',
+  );
+  @override
+  late final GeneratedColumn<bool> pendingSync = GeneratedColumn<bool>(
+    'pending_sync',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("pending_sync" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _takenAtMeta = const VerificationMeta(
+    'takenAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> takenAt = GeneratedColumn<DateTime>(
+    'taken_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    clientUuid,
+    serverId,
+    quizServerId,
+    chapterClientUuid,
+    score,
+    total,
+    answersJson,
+    pendingSync,
+    takenAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'quiz_attempts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<QuizAttempt> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('client_uuid')) {
+      context.handle(
+        _clientUuidMeta,
+        clientUuid.isAcceptableOrUnknown(data['client_uuid']!, _clientUuidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_clientUuidMeta);
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
+    }
+    if (data.containsKey('quiz_server_id')) {
+      context.handle(
+        _quizServerIdMeta,
+        quizServerId.isAcceptableOrUnknown(
+          data['quiz_server_id']!,
+          _quizServerIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_quizServerIdMeta);
+    }
+    if (data.containsKey('chapter_client_uuid')) {
+      context.handle(
+        _chapterClientUuidMeta,
+        chapterClientUuid.isAcceptableOrUnknown(
+          data['chapter_client_uuid']!,
+          _chapterClientUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_chapterClientUuidMeta);
+    }
+    if (data.containsKey('score')) {
+      context.handle(
+        _scoreMeta,
+        score.isAcceptableOrUnknown(data['score']!, _scoreMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_scoreMeta);
+    }
+    if (data.containsKey('total')) {
+      context.handle(
+        _totalMeta,
+        total.isAcceptableOrUnknown(data['total']!, _totalMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_totalMeta);
+    }
+    if (data.containsKey('answers_json')) {
+      context.handle(
+        _answersJsonMeta,
+        answersJson.isAcceptableOrUnknown(
+          data['answers_json']!,
+          _answersJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_answersJsonMeta);
+    }
+    if (data.containsKey('pending_sync')) {
+      context.handle(
+        _pendingSyncMeta,
+        pendingSync.isAcceptableOrUnknown(
+          data['pending_sync']!,
+          _pendingSyncMeta,
+        ),
+      );
+    }
+    if (data.containsKey('taken_at')) {
+      context.handle(
+        _takenAtMeta,
+        takenAt.isAcceptableOrUnknown(data['taken_at']!, _takenAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  QuizAttempt map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return QuizAttempt(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      clientUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}client_uuid'],
+      )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_id'],
+      ),
+      quizServerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quiz_server_id'],
+      )!,
+      chapterClientUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chapter_client_uuid'],
+      )!,
+      score: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}score'],
+      )!,
+      total: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total'],
+      )!,
+      answersJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answers_json'],
+      )!,
+      pendingSync: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}pending_sync'],
+      )!,
+      takenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}taken_at'],
+      )!,
+    );
+  }
+
+  @override
+  $QuizAttemptsTable createAlias(String alias) {
+    return $QuizAttemptsTable(attachedDatabase, alias);
+  }
+}
+
+class QuizAttempt extends DataClass implements Insertable<QuizAttempt> {
+  final int id;
+  final String clientUuid;
+  final String? serverId;
+  final String quizServerId;
+  final String chapterClientUuid;
+  final int score;
+  final int total;
+  final String answersJson;
+  final bool pendingSync;
+  final DateTime takenAt;
+  const QuizAttempt({
+    required this.id,
+    required this.clientUuid,
+    this.serverId,
+    required this.quizServerId,
+    required this.chapterClientUuid,
+    required this.score,
+    required this.total,
+    required this.answersJson,
+    required this.pendingSync,
+    required this.takenAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['client_uuid'] = Variable<String>(clientUuid);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<String>(serverId);
+    }
+    map['quiz_server_id'] = Variable<String>(quizServerId);
+    map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
+    map['score'] = Variable<int>(score);
+    map['total'] = Variable<int>(total);
+    map['answers_json'] = Variable<String>(answersJson);
+    map['pending_sync'] = Variable<bool>(pendingSync);
+    map['taken_at'] = Variable<DateTime>(takenAt);
+    return map;
+  }
+
+  QuizAttemptsCompanion toCompanion(bool nullToAbsent) {
+    return QuizAttemptsCompanion(
+      id: Value(id),
+      clientUuid: Value(clientUuid),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      quizServerId: Value(quizServerId),
+      chapterClientUuid: Value(chapterClientUuid),
+      score: Value(score),
+      total: Value(total),
+      answersJson: Value(answersJson),
+      pendingSync: Value(pendingSync),
+      takenAt: Value(takenAt),
+    );
+  }
+
+  factory QuizAttempt.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return QuizAttempt(
+      id: serializer.fromJson<int>(json['id']),
+      clientUuid: serializer.fromJson<String>(json['clientUuid']),
+      serverId: serializer.fromJson<String?>(json['serverId']),
+      quizServerId: serializer.fromJson<String>(json['quizServerId']),
+      chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
+      score: serializer.fromJson<int>(json['score']),
+      total: serializer.fromJson<int>(json['total']),
+      answersJson: serializer.fromJson<String>(json['answersJson']),
+      pendingSync: serializer.fromJson<bool>(json['pendingSync']),
+      takenAt: serializer.fromJson<DateTime>(json['takenAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'clientUuid': serializer.toJson<String>(clientUuid),
+      'serverId': serializer.toJson<String?>(serverId),
+      'quizServerId': serializer.toJson<String>(quizServerId),
+      'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
+      'score': serializer.toJson<int>(score),
+      'total': serializer.toJson<int>(total),
+      'answersJson': serializer.toJson<String>(answersJson),
+      'pendingSync': serializer.toJson<bool>(pendingSync),
+      'takenAt': serializer.toJson<DateTime>(takenAt),
+    };
+  }
+
+  QuizAttempt copyWith({
+    int? id,
+    String? clientUuid,
+    Value<String?> serverId = const Value.absent(),
+    String? quizServerId,
+    String? chapterClientUuid,
+    int? score,
+    int? total,
+    String? answersJson,
+    bool? pendingSync,
+    DateTime? takenAt,
+  }) => QuizAttempt(
+    id: id ?? this.id,
+    clientUuid: clientUuid ?? this.clientUuid,
+    serverId: serverId.present ? serverId.value : this.serverId,
+    quizServerId: quizServerId ?? this.quizServerId,
+    chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
+    score: score ?? this.score,
+    total: total ?? this.total,
+    answersJson: answersJson ?? this.answersJson,
+    pendingSync: pendingSync ?? this.pendingSync,
+    takenAt: takenAt ?? this.takenAt,
+  );
+  QuizAttempt copyWithCompanion(QuizAttemptsCompanion data) {
+    return QuizAttempt(
+      id: data.id.present ? data.id.value : this.id,
+      clientUuid: data.clientUuid.present
+          ? data.clientUuid.value
+          : this.clientUuid,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      quizServerId: data.quizServerId.present
+          ? data.quizServerId.value
+          : this.quizServerId,
+      chapterClientUuid: data.chapterClientUuid.present
+          ? data.chapterClientUuid.value
+          : this.chapterClientUuid,
+      score: data.score.present ? data.score.value : this.score,
+      total: data.total.present ? data.total.value : this.total,
+      answersJson: data.answersJson.present
+          ? data.answersJson.value
+          : this.answersJson,
+      pendingSync: data.pendingSync.present
+          ? data.pendingSync.value
+          : this.pendingSync,
+      takenAt: data.takenAt.present ? data.takenAt.value : this.takenAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QuizAttempt(')
+          ..write('id: $id, ')
+          ..write('clientUuid: $clientUuid, ')
+          ..write('serverId: $serverId, ')
+          ..write('quizServerId: $quizServerId, ')
+          ..write('chapterClientUuid: $chapterClientUuid, ')
+          ..write('score: $score, ')
+          ..write('total: $total, ')
+          ..write('answersJson: $answersJson, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('takenAt: $takenAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    clientUuid,
+    serverId,
+    quizServerId,
+    chapterClientUuid,
+    score,
+    total,
+    answersJson,
+    pendingSync,
+    takenAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is QuizAttempt &&
+          other.id == this.id &&
+          other.clientUuid == this.clientUuid &&
+          other.serverId == this.serverId &&
+          other.quizServerId == this.quizServerId &&
+          other.chapterClientUuid == this.chapterClientUuid &&
+          other.score == this.score &&
+          other.total == this.total &&
+          other.answersJson == this.answersJson &&
+          other.pendingSync == this.pendingSync &&
+          other.takenAt == this.takenAt);
+}
+
+class QuizAttemptsCompanion extends UpdateCompanion<QuizAttempt> {
+  final Value<int> id;
+  final Value<String> clientUuid;
+  final Value<String?> serverId;
+  final Value<String> quizServerId;
+  final Value<String> chapterClientUuid;
+  final Value<int> score;
+  final Value<int> total;
+  final Value<String> answersJson;
+  final Value<bool> pendingSync;
+  final Value<DateTime> takenAt;
+  const QuizAttemptsCompanion({
+    this.id = const Value.absent(),
+    this.clientUuid = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.quizServerId = const Value.absent(),
+    this.chapterClientUuid = const Value.absent(),
+    this.score = const Value.absent(),
+    this.total = const Value.absent(),
+    this.answersJson = const Value.absent(),
+    this.pendingSync = const Value.absent(),
+    this.takenAt = const Value.absent(),
+  });
+  QuizAttemptsCompanion.insert({
+    this.id = const Value.absent(),
+    required String clientUuid,
+    this.serverId = const Value.absent(),
+    required String quizServerId,
+    required String chapterClientUuid,
+    required int score,
+    required int total,
+    required String answersJson,
+    this.pendingSync = const Value.absent(),
+    this.takenAt = const Value.absent(),
+  }) : clientUuid = Value(clientUuid),
+       quizServerId = Value(quizServerId),
+       chapterClientUuid = Value(chapterClientUuid),
+       score = Value(score),
+       total = Value(total),
+       answersJson = Value(answersJson);
+  static Insertable<QuizAttempt> custom({
+    Expression<int>? id,
+    Expression<String>? clientUuid,
+    Expression<String>? serverId,
+    Expression<String>? quizServerId,
+    Expression<String>? chapterClientUuid,
+    Expression<int>? score,
+    Expression<int>? total,
+    Expression<String>? answersJson,
+    Expression<bool>? pendingSync,
+    Expression<DateTime>? takenAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (clientUuid != null) 'client_uuid': clientUuid,
+      if (serverId != null) 'server_id': serverId,
+      if (quizServerId != null) 'quiz_server_id': quizServerId,
+      if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
+      if (score != null) 'score': score,
+      if (total != null) 'total': total,
+      if (answersJson != null) 'answers_json': answersJson,
+      if (pendingSync != null) 'pending_sync': pendingSync,
+      if (takenAt != null) 'taken_at': takenAt,
+    });
+  }
+
+  QuizAttemptsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? clientUuid,
+    Value<String?>? serverId,
+    Value<String>? quizServerId,
+    Value<String>? chapterClientUuid,
+    Value<int>? score,
+    Value<int>? total,
+    Value<String>? answersJson,
+    Value<bool>? pendingSync,
+    Value<DateTime>? takenAt,
+  }) {
+    return QuizAttemptsCompanion(
+      id: id ?? this.id,
+      clientUuid: clientUuid ?? this.clientUuid,
+      serverId: serverId ?? this.serverId,
+      quizServerId: quizServerId ?? this.quizServerId,
+      chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
+      score: score ?? this.score,
+      total: total ?? this.total,
+      answersJson: answersJson ?? this.answersJson,
+      pendingSync: pendingSync ?? this.pendingSync,
+      takenAt: takenAt ?? this.takenAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (clientUuid.present) {
+      map['client_uuid'] = Variable<String>(clientUuid.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (quizServerId.present) {
+      map['quiz_server_id'] = Variable<String>(quizServerId.value);
+    }
+    if (chapterClientUuid.present) {
+      map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
+    }
+    if (score.present) {
+      map['score'] = Variable<int>(score.value);
+    }
+    if (total.present) {
+      map['total'] = Variable<int>(total.value);
+    }
+    if (answersJson.present) {
+      map['answers_json'] = Variable<String>(answersJson.value);
+    }
+    if (pendingSync.present) {
+      map['pending_sync'] = Variable<bool>(pendingSync.value);
+    }
+    if (takenAt.present) {
+      map['taken_at'] = Variable<DateTime>(takenAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QuizAttemptsCompanion(')
+          ..write('id: $id, ')
+          ..write('clientUuid: $clientUuid, ')
+          ..write('serverId: $serverId, ')
+          ..write('quizServerId: $quizServerId, ')
+          ..write('chapterClientUuid: $chapterClientUuid, ')
+          ..write('score: $score, ')
+          ..write('total: $total, ')
+          ..write('answersJson: $answersJson, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('takenAt: $takenAt')
           ..write(')'))
         .toString();
   }
@@ -4358,9 +6264,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ChaptersTable chapters = $ChaptersTable(this);
   late final $AgendaItemsTable agendaItems = $AgendaItemsTable(this);
   late final $RecordingsTable recordings = $RecordingsTable(this);
+  late final $TranscriptsTable transcripts = $TranscriptsTable(this);
   late final $SummariesTable summaries = $SummariesTable(this);
   late final $ExercisesTable exercises = $ExercisesTable(this);
   late final $QuizzesTable quizzes = $QuizzesTable(this);
+  late final $QuizAttemptsTable quizAttempts = $QuizAttemptsTable(this);
   late final $MetaTable meta = $MetaTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -4372,9 +6280,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chapters,
     agendaItems,
     recordings,
+    transcripts,
     summaries,
     exercises,
     quizzes,
+    quizAttempts,
     meta,
   ];
 }
@@ -5239,9 +7149,16 @@ typedef $$AgendaItemsTableCreateCompanionBuilder =
       required String clientUuid,
       Value<String?> serverId,
       required String title,
+      Value<String> kind,
+      Value<String?> subject,
       Value<String?> notes,
+      Value<String?> location,
       Value<DateTime?> startsAt,
       Value<DateTime?> endsAt,
+      Value<String> recurrence,
+      Value<DateTime?> recurrenceUntil,
+      Value<int?> reminderMinutes,
+      Value<String?> chapterClientUuid,
       Value<bool> pendingSync,
       Value<bool> deleted,
       Value<int> syncVersion,
@@ -5253,9 +7170,16 @@ typedef $$AgendaItemsTableUpdateCompanionBuilder =
       Value<String> clientUuid,
       Value<String?> serverId,
       Value<String> title,
+      Value<String> kind,
+      Value<String?> subject,
       Value<String?> notes,
+      Value<String?> location,
       Value<DateTime?> startsAt,
       Value<DateTime?> endsAt,
+      Value<String> recurrence,
+      Value<DateTime?> recurrenceUntil,
+      Value<int?> reminderMinutes,
+      Value<String?> chapterClientUuid,
       Value<bool> pendingSync,
       Value<bool> deleted,
       Value<int> syncVersion,
@@ -5291,8 +7215,23 @@ class $$AgendaItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subject => $composableBuilder(
+    column: $table.subject,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get location => $composableBuilder(
+    column: $table.location,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5303,6 +7242,26 @@ class $$AgendaItemsTableFilterComposer
 
   ColumnFilters<DateTime> get endsAt => $composableBuilder(
     column: $table.endsAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recurrence => $composableBuilder(
+    column: $table.recurrence,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get recurrenceUntil => $composableBuilder(
+    column: $table.recurrenceUntil,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderMinutes => $composableBuilder(
+    column: $table.reminderMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5356,8 +7315,23 @@ class $$AgendaItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subject => $composableBuilder(
+    column: $table.subject,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get location => $composableBuilder(
+    column: $table.location,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -5368,6 +7342,26 @@ class $$AgendaItemsTableOrderingComposer
 
   ColumnOrderings<DateTime> get endsAt => $composableBuilder(
     column: $table.endsAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recurrence => $composableBuilder(
+    column: $table.recurrence,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get recurrenceUntil => $composableBuilder(
+    column: $table.recurrenceUntil,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reminderMinutes => $composableBuilder(
+    column: $table.reminderMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -5415,14 +7409,43 @@ class $$AgendaItemsTableAnnotationComposer
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
 
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get subject =>
+      $composableBuilder(column: $table.subject, builder: (column) => column);
+
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get location =>
+      $composableBuilder(column: $table.location, builder: (column) => column);
 
   GeneratedColumn<DateTime> get startsAt =>
       $composableBuilder(column: $table.startsAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get endsAt =>
       $composableBuilder(column: $table.endsAt, builder: (column) => column);
+
+  GeneratedColumn<String> get recurrence => $composableBuilder(
+    column: $table.recurrence,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get recurrenceUntil => $composableBuilder(
+    column: $table.recurrenceUntil,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reminderMinutes => $composableBuilder(
+    column: $table.reminderMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get pendingSync => $composableBuilder(
     column: $table.pendingSync,
@@ -5476,9 +7499,16 @@ class $$AgendaItemsTableTableManager
                 Value<String> clientUuid = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String> title = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> subject = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<String?> location = const Value.absent(),
                 Value<DateTime?> startsAt = const Value.absent(),
                 Value<DateTime?> endsAt = const Value.absent(),
+                Value<String> recurrence = const Value.absent(),
+                Value<DateTime?> recurrenceUntil = const Value.absent(),
+                Value<int?> reminderMinutes = const Value.absent(),
+                Value<String?> chapterClientUuid = const Value.absent(),
                 Value<bool> pendingSync = const Value.absent(),
                 Value<bool> deleted = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
@@ -5488,9 +7518,16 @@ class $$AgendaItemsTableTableManager
                 clientUuid: clientUuid,
                 serverId: serverId,
                 title: title,
+                kind: kind,
+                subject: subject,
                 notes: notes,
+                location: location,
                 startsAt: startsAt,
                 endsAt: endsAt,
+                recurrence: recurrence,
+                recurrenceUntil: recurrenceUntil,
+                reminderMinutes: reminderMinutes,
+                chapterClientUuid: chapterClientUuid,
                 pendingSync: pendingSync,
                 deleted: deleted,
                 syncVersion: syncVersion,
@@ -5502,9 +7539,16 @@ class $$AgendaItemsTableTableManager
                 required String clientUuid,
                 Value<String?> serverId = const Value.absent(),
                 required String title,
+                Value<String> kind = const Value.absent(),
+                Value<String?> subject = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<String?> location = const Value.absent(),
                 Value<DateTime?> startsAt = const Value.absent(),
                 Value<DateTime?> endsAt = const Value.absent(),
+                Value<String> recurrence = const Value.absent(),
+                Value<DateTime?> recurrenceUntil = const Value.absent(),
+                Value<int?> reminderMinutes = const Value.absent(),
+                Value<String?> chapterClientUuid = const Value.absent(),
                 Value<bool> pendingSync = const Value.absent(),
                 Value<bool> deleted = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
@@ -5514,9 +7558,16 @@ class $$AgendaItemsTableTableManager
                 clientUuid: clientUuid,
                 serverId: serverId,
                 title: title,
+                kind: kind,
+                subject: subject,
                 notes: notes,
+                location: location,
                 startsAt: startsAt,
                 endsAt: endsAt,
+                recurrence: recurrence,
+                recurrenceUntil: recurrenceUntil,
+                reminderMinutes: reminderMinutes,
+                chapterClientUuid: chapterClientUuid,
                 pendingSync: pendingSync,
                 deleted: deleted,
                 syncVersion: syncVersion,
@@ -5843,19 +7894,284 @@ typedef $$RecordingsTableProcessedTableManager =
       Recording,
       PrefetchHooks Function()
     >;
+typedef $$TranscriptsTableCreateCompanionBuilder =
+    TranscriptsCompanion Function({
+      Value<int> id,
+      required String serverId,
+      required String recordingServerId,
+      required String recordingClientUuid,
+      required String content,
+      Value<String?> language,
+      Value<String> segmentsJson,
+      Value<int> syncVersion,
+    });
+typedef $$TranscriptsTableUpdateCompanionBuilder =
+    TranscriptsCompanion Function({
+      Value<int> id,
+      Value<String> serverId,
+      Value<String> recordingServerId,
+      Value<String> recordingClientUuid,
+      Value<String> content,
+      Value<String?> language,
+      Value<String> segmentsJson,
+      Value<int> syncVersion,
+    });
+
+class $$TranscriptsTableFilterComposer
+    extends Composer<_$AppDatabase, $TranscriptsTable> {
+  $$TranscriptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordingClientUuid => $composableBuilder(
+    column: $table.recordingClientUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncVersion => $composableBuilder(
+    column: $table.syncVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TranscriptsTableOrderingComposer
+    extends Composer<_$AppDatabase, $TranscriptsTable> {
+  $$TranscriptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordingClientUuid => $composableBuilder(
+    column: $table.recordingClientUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncVersion => $composableBuilder(
+    column: $table.syncVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TranscriptsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TranscriptsTable> {
+  $$TranscriptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get recordingClientUuid => $composableBuilder(
+    column: $table.recordingClientUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get language =>
+      $composableBuilder(column: $table.language, builder: (column) => column);
+
+  GeneratedColumn<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get syncVersion => $composableBuilder(
+    column: $table.syncVersion,
+    builder: (column) => column,
+  );
+}
+
+class $$TranscriptsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TranscriptsTable,
+          Transcript,
+          $$TranscriptsTableFilterComposer,
+          $$TranscriptsTableOrderingComposer,
+          $$TranscriptsTableAnnotationComposer,
+          $$TranscriptsTableCreateCompanionBuilder,
+          $$TranscriptsTableUpdateCompanionBuilder,
+          (
+            Transcript,
+            BaseReferences<_$AppDatabase, $TranscriptsTable, Transcript>,
+          ),
+          Transcript,
+          PrefetchHooks Function()
+        > {
+  $$TranscriptsTableTableManager(_$AppDatabase db, $TranscriptsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TranscriptsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TranscriptsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TranscriptsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> serverId = const Value.absent(),
+                Value<String> recordingServerId = const Value.absent(),
+                Value<String> recordingClientUuid = const Value.absent(),
+                Value<String> content = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String> segmentsJson = const Value.absent(),
+                Value<int> syncVersion = const Value.absent(),
+              }) => TranscriptsCompanion(
+                id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
+                recordingClientUuid: recordingClientUuid,
+                content: content,
+                language: language,
+                segmentsJson: segmentsJson,
+                syncVersion: syncVersion,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String serverId,
+                required String recordingServerId,
+                required String recordingClientUuid,
+                required String content,
+                Value<String?> language = const Value.absent(),
+                Value<String> segmentsJson = const Value.absent(),
+                Value<int> syncVersion = const Value.absent(),
+              }) => TranscriptsCompanion.insert(
+                id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
+                recordingClientUuid: recordingClientUuid,
+                content: content,
+                language: language,
+                segmentsJson: segmentsJson,
+                syncVersion: syncVersion,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TranscriptsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TranscriptsTable,
+      Transcript,
+      $$TranscriptsTableFilterComposer,
+      $$TranscriptsTableOrderingComposer,
+      $$TranscriptsTableAnnotationComposer,
+      $$TranscriptsTableCreateCompanionBuilder,
+      $$TranscriptsTableUpdateCompanionBuilder,
+      (
+        Transcript,
+        BaseReferences<_$AppDatabase, $TranscriptsTable, Transcript>,
+      ),
+      Transcript,
+      PrefetchHooks Function()
+    >;
 typedef $$SummariesTableCreateCompanionBuilder =
     SummariesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       required String chapterClientUuid,
       required String contentMd,
+      Value<String?> structuredJson,
       Value<String> status,
       Value<int> syncVersion,
     });
 typedef $$SummariesTableUpdateCompanionBuilder =
     SummariesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       Value<String> chapterClientUuid,
       Value<String> contentMd,
+      Value<String?> structuredJson,
       Value<String> status,
       Value<int> syncVersion,
     });
@@ -5874,6 +8190,16 @@ class $$SummariesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnFilters(column),
@@ -5881,6 +8207,11 @@ class $$SummariesTableFilterComposer
 
   ColumnFilters<String> get contentMd => $composableBuilder(
     column: $table.contentMd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get structuredJson => $composableBuilder(
+    column: $table.structuredJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5909,6 +8240,16 @@ class $$SummariesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -5916,6 +8257,11 @@ class $$SummariesTableOrderingComposer
 
   ColumnOrderings<String> get contentMd => $composableBuilder(
     column: $table.contentMd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get structuredJson => $composableBuilder(
+    column: $table.structuredJson,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -5942,6 +8288,14 @@ class $$SummariesTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => column,
@@ -5949,6 +8303,11 @@ class $$SummariesTableAnnotationComposer
 
   GeneratedColumn<String> get contentMd =>
       $composableBuilder(column: $table.contentMd, builder: (column) => column);
+
+  GeneratedColumn<String> get structuredJson => $composableBuilder(
+    column: $table.structuredJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
@@ -5988,28 +8347,40 @@ class $$SummariesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> contentMd = const Value.absent(),
+                Value<String?> structuredJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => SummariesCompanion(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 contentMd: contentMd,
+                structuredJson: structuredJson,
                 status: status,
                 syncVersion: syncVersion,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 required String chapterClientUuid,
                 required String contentMd,
+                Value<String?> structuredJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => SummariesCompanion.insert(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 contentMd: contentMd,
+                structuredJson: structuredJson,
                 status: status,
                 syncVersion: syncVersion,
               ),
@@ -6038,6 +8409,8 @@ typedef $$SummariesTableProcessedTableManager =
 typedef $$ExercisesTableCreateCompanionBuilder =
     ExercisesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       required String chapterClientUuid,
       required String itemsJson,
       Value<String> status,
@@ -6046,6 +8419,8 @@ typedef $$ExercisesTableCreateCompanionBuilder =
 typedef $$ExercisesTableUpdateCompanionBuilder =
     ExercisesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       Value<String> chapterClientUuid,
       Value<String> itemsJson,
       Value<String> status,
@@ -6063,6 +8438,16 @@ class $$ExercisesTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6101,6 +8486,16 @@ class $$ExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -6133,6 +8528,14 @@ class $$ExercisesTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
@@ -6180,12 +8583,16 @@ class $$ExercisesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> itemsJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 itemsJson: itemsJson,
                 status: status,
@@ -6194,12 +8601,16 @@ class $$ExercisesTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 required String chapterClientUuid,
                 required String itemsJson,
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 itemsJson: itemsJson,
                 status: status,
@@ -6230,6 +8641,8 @@ typedef $$ExercisesTableProcessedTableManager =
 typedef $$QuizzesTableCreateCompanionBuilder =
     QuizzesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       required String chapterClientUuid,
       required String questionsJson,
       Value<String> status,
@@ -6238,6 +8651,8 @@ typedef $$QuizzesTableCreateCompanionBuilder =
 typedef $$QuizzesTableUpdateCompanionBuilder =
     QuizzesCompanion Function({
       Value<int> id,
+      Value<String?> serverId,
+      Value<String?> recordingServerId,
       Value<String> chapterClientUuid,
       Value<String> questionsJson,
       Value<String> status,
@@ -6255,6 +8670,16 @@ class $$QuizzesTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6293,6 +8718,16 @@ class $$QuizzesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -6325,6 +8760,14 @@ class $$QuizzesTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordingServerId => $composableBuilder(
+    column: $table.recordingServerId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
@@ -6374,12 +8817,16 @@ class $$QuizzesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> questionsJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => QuizzesCompanion(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 questionsJson: questionsJson,
                 status: status,
@@ -6388,12 +8835,16 @@ class $$QuizzesTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String?> recordingServerId = const Value.absent(),
                 required String chapterClientUuid,
                 required String questionsJson,
                 Value<String> status = const Value.absent(),
                 Value<int> syncVersion = const Value.absent(),
               }) => QuizzesCompanion.insert(
                 id: id,
+                serverId: serverId,
+                recordingServerId: recordingServerId,
                 chapterClientUuid: chapterClientUuid,
                 questionsJson: questionsJson,
                 status: status,
@@ -6419,6 +8870,305 @@ typedef $$QuizzesTableProcessedTableManager =
       $$QuizzesTableUpdateCompanionBuilder,
       (Quizze, BaseReferences<_$AppDatabase, $QuizzesTable, Quizze>),
       Quizze,
+      PrefetchHooks Function()
+    >;
+typedef $$QuizAttemptsTableCreateCompanionBuilder =
+    QuizAttemptsCompanion Function({
+      Value<int> id,
+      required String clientUuid,
+      Value<String?> serverId,
+      required String quizServerId,
+      required String chapterClientUuid,
+      required int score,
+      required int total,
+      required String answersJson,
+      Value<bool> pendingSync,
+      Value<DateTime> takenAt,
+    });
+typedef $$QuizAttemptsTableUpdateCompanionBuilder =
+    QuizAttemptsCompanion Function({
+      Value<int> id,
+      Value<String> clientUuid,
+      Value<String?> serverId,
+      Value<String> quizServerId,
+      Value<String> chapterClientUuid,
+      Value<int> score,
+      Value<int> total,
+      Value<String> answersJson,
+      Value<bool> pendingSync,
+      Value<DateTime> takenAt,
+    });
+
+class $$QuizAttemptsTableFilterComposer
+    extends Composer<_$AppDatabase, $QuizAttemptsTable> {
+  $$QuizAttemptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clientUuid => $composableBuilder(
+    column: $table.clientUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get quizServerId => $composableBuilder(
+    column: $table.quizServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get score => $composableBuilder(
+    column: $table.score,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get total => $composableBuilder(
+    column: $table.total,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answersJson => $composableBuilder(
+    column: $table.answersJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get takenAt => $composableBuilder(
+    column: $table.takenAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$QuizAttemptsTableOrderingComposer
+    extends Composer<_$AppDatabase, $QuizAttemptsTable> {
+  $$QuizAttemptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clientUuid => $composableBuilder(
+    column: $table.clientUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quizServerId => $composableBuilder(
+    column: $table.quizServerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get score => $composableBuilder(
+    column: $table.score,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get total => $composableBuilder(
+    column: $table.total,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answersJson => $composableBuilder(
+    column: $table.answersJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get takenAt => $composableBuilder(
+    column: $table.takenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$QuizAttemptsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $QuizAttemptsTable> {
+  $$QuizAttemptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get clientUuid => $composableBuilder(
+    column: $table.clientUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<String> get quizServerId => $composableBuilder(
+    column: $table.quizServerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get chapterClientUuid => $composableBuilder(
+    column: $table.chapterClientUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get score =>
+      $composableBuilder(column: $table.score, builder: (column) => column);
+
+  GeneratedColumn<int> get total =>
+      $composableBuilder(column: $table.total, builder: (column) => column);
+
+  GeneratedColumn<String> get answersJson => $composableBuilder(
+    column: $table.answersJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get takenAt =>
+      $composableBuilder(column: $table.takenAt, builder: (column) => column);
+}
+
+class $$QuizAttemptsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $QuizAttemptsTable,
+          QuizAttempt,
+          $$QuizAttemptsTableFilterComposer,
+          $$QuizAttemptsTableOrderingComposer,
+          $$QuizAttemptsTableAnnotationComposer,
+          $$QuizAttemptsTableCreateCompanionBuilder,
+          $$QuizAttemptsTableUpdateCompanionBuilder,
+          (
+            QuizAttempt,
+            BaseReferences<_$AppDatabase, $QuizAttemptsTable, QuizAttempt>,
+          ),
+          QuizAttempt,
+          PrefetchHooks Function()
+        > {
+  $$QuizAttemptsTableTableManager(_$AppDatabase db, $QuizAttemptsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$QuizAttemptsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$QuizAttemptsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$QuizAttemptsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> clientUuid = const Value.absent(),
+                Value<String?> serverId = const Value.absent(),
+                Value<String> quizServerId = const Value.absent(),
+                Value<String> chapterClientUuid = const Value.absent(),
+                Value<int> score = const Value.absent(),
+                Value<int> total = const Value.absent(),
+                Value<String> answersJson = const Value.absent(),
+                Value<bool> pendingSync = const Value.absent(),
+                Value<DateTime> takenAt = const Value.absent(),
+              }) => QuizAttemptsCompanion(
+                id: id,
+                clientUuid: clientUuid,
+                serverId: serverId,
+                quizServerId: quizServerId,
+                chapterClientUuid: chapterClientUuid,
+                score: score,
+                total: total,
+                answersJson: answersJson,
+                pendingSync: pendingSync,
+                takenAt: takenAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String clientUuid,
+                Value<String?> serverId = const Value.absent(),
+                required String quizServerId,
+                required String chapterClientUuid,
+                required int score,
+                required int total,
+                required String answersJson,
+                Value<bool> pendingSync = const Value.absent(),
+                Value<DateTime> takenAt = const Value.absent(),
+              }) => QuizAttemptsCompanion.insert(
+                id: id,
+                clientUuid: clientUuid,
+                serverId: serverId,
+                quizServerId: quizServerId,
+                chapterClientUuid: chapterClientUuid,
+                score: score,
+                total: total,
+                answersJson: answersJson,
+                pendingSync: pendingSync,
+                takenAt: takenAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$QuizAttemptsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $QuizAttemptsTable,
+      QuizAttempt,
+      $$QuizAttemptsTableFilterComposer,
+      $$QuizAttemptsTableOrderingComposer,
+      $$QuizAttemptsTableAnnotationComposer,
+      $$QuizAttemptsTableCreateCompanionBuilder,
+      $$QuizAttemptsTableUpdateCompanionBuilder,
+      (
+        QuizAttempt,
+        BaseReferences<_$AppDatabase, $QuizAttemptsTable, QuizAttempt>,
+      ),
+      QuizAttempt,
       PrefetchHooks Function()
     >;
 typedef $$MetaTableCreateCompanionBuilder =
@@ -6562,11 +9312,15 @@ class $AppDatabaseManager {
       $$AgendaItemsTableTableManager(_db, _db.agendaItems);
   $$RecordingsTableTableManager get recordings =>
       $$RecordingsTableTableManager(_db, _db.recordings);
+  $$TranscriptsTableTableManager get transcripts =>
+      $$TranscriptsTableTableManager(_db, _db.transcripts);
   $$SummariesTableTableManager get summaries =>
       $$SummariesTableTableManager(_db, _db.summaries);
   $$ExercisesTableTableManager get exercises =>
       $$ExercisesTableTableManager(_db, _db.exercises);
   $$QuizzesTableTableManager get quizzes =>
       $$QuizzesTableTableManager(_db, _db.quizzes);
+  $$QuizAttemptsTableTableManager get quizAttempts =>
+      $$QuizAttemptsTableTableManager(_db, _db.quizAttempts);
   $$MetaTableTableManager get meta => $$MetaTableTableManager(_db, _db.meta);
 }

@@ -33,7 +33,12 @@ impl Pipeline {
         stt: Arc<dyn SttProvider>,
         generator: Arc<dyn StudyGenerator>,
     ) -> Self {
-        Self { db, storage, stt, generator }
+        Self {
+            db,
+            storage,
+            stt,
+            generator,
+        }
     }
 
     /// Run until the channel closes.
@@ -41,7 +46,9 @@ impl Pipeline {
         while let Some(recording_id) = rx.recv().await {
             if let Err(e) = self.process(recording_id).await {
                 tracing::error!(error = %e, %recording_id, "pipeline failed");
-                let _ = self.set_status(recording_id, "failed", Some(&e.to_string())).await;
+                let _ = self
+                    .set_status(recording_id, "failed", Some(&e.to_string()))
+                    .await;
             }
         }
     }
@@ -59,7 +66,10 @@ impl Pipeline {
 
         // Entitlement gate: lapsed users keep their content but get no NEW processing.
         // Admins always pass (synthetic entitlement).
-        if active_entitlement(&self.db, rec.user_id, &rec.user_role).await?.is_none() {
+        if active_entitlement(&self.db, rec.user_id, &rec.user_role)
+            .await?
+            .is_none()
+        {
             tracing::info!(%recording_id, user_id = %rec.user_id, "no active entitlement; skipping processing");
             self.set_status(recording_id, "blocked", Some("subscription or trial ended"))
                 .await?;
@@ -68,11 +78,10 @@ impl Pipeline {
 
         self.set_status(recording_id, "processing", None).await?;
 
-        let chapter_title: String =
-            sqlx::query_scalar("SELECT title FROM chapters WHERE id = $1")
-                .bind(rec.chapter_id)
-                .fetch_one(&self.db)
-                .await?;
+        let chapter_title: String = sqlx::query_scalar("SELECT title FROM chapters WHERE id = $1")
+            .bind(rec.chapter_id)
+            .fetch_one(&self.db)
+            .await?;
 
         // 1) Speech-to-text.
         let audio = self.storage.read(&rec.storage_path).await?;
@@ -88,22 +97,26 @@ impl Pipeline {
             return Ok(());
         }
         sqlx::query(
-            "INSERT INTO transcripts (recording_id, provider, content)
-             VALUES ($1, $2, $3)
+            "INSERT INTO transcripts (recording_id, provider, content, language, segments)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (recording_id) DO UPDATE
-                SET provider = EXCLUDED.provider, content = EXCLUDED.content",
+                SET provider = EXCLUDED.provider,
+                    content = EXCLUDED.content,
+                    language = EXCLUDED.language,
+                    segments = EXCLUDED.segments,
+                    sync_version = nextval('sync_version_seq')",
         )
         .bind(recording_id)
         .bind(self.stt.name())
         .bind(&transcript.text)
+        .bind(&transcript.language)
+        .bind(serde_json::to_value(&transcript.segments)?)
         .execute(&self.db)
         .await?;
 
         // 2) Summary + exercises + quiz.
-        let content: GeneratedContent = self
-            .generator
-            .generate(&chapter_title, &transcript)
-            .await?;
+        let content: GeneratedContent =
+            self.generator.generate(&chapter_title, &transcript).await?;
         self.persist_study_material(recording_id, rec.chapter_id, &content)
             .await?;
 
@@ -126,13 +139,20 @@ impl Pipeline {
                 .await?;
         }
 
+        let structured_content = serde_json::json!({
+            "key_points": content.key_points,
+            "takeaway": content.takeaway,
+            "flashcards": content.flashcards,
+        });
         sqlx::query(
-            "INSERT INTO summaries (recording_id, chapter_id, content_md, status)
-             VALUES ($1, $2, $3, 'approved')",
+            "INSERT INTO summaries
+                (recording_id, chapter_id, content_md, structured_content, status)
+             VALUES ($1, $2, $3, $4, 'approved')",
         )
         .bind(recording_id)
         .bind(chapter_id)
         .bind(&content.summary_markdown)
+        .bind(structured_content)
         .execute(&self.db)
         .await?;
 

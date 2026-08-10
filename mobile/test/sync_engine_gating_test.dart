@@ -12,8 +12,6 @@ import 'package:buddywize/db/app_database.dart';
 import 'package:buddywize/sync/sync_engine.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 void main() {
   group('SyncEngine.sync()', () {
@@ -23,35 +21,27 @@ void main() {
       addTearDown(db.close);
 
       final engine = SyncEngine(db: db, api: client);
-      var fired = 0;
-      // Record every would-be push call. If sync() doesn't short-circuit,
-      // one of these will fire.
-      engine.testScheduleSync = () => fired += 1;
+      addTearDown(engine.dispose);
 
       await engine.sync();
 
-      expect(fired, 0,
-          reason: 'sync() must NOT proceed when api.isAuthenticated is false');
+      expect(
+        engine.currentPhase,
+        SyncPhase.idle,
+        reason: 'sync() must NOT proceed when api.isAuthenticated is false',
+      );
     });
 
     test('re-entrancy guard prevents concurrent syncs', () async {
-      final client = ApiClient();
-      client.accessToken = 'test-token';
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
 
       // Slow mock that blocks the in-flight sync until we release it.
       final release = Completer<void>();
-      final slow = MockClient((request) async {
-        await release.future;
-        return http.Response('{}', 200);
-      });
-      final api = _RecordingApi(client: client, httpClient: slow);
+      final api = _SlowApi(release.future);
 
       final engine = SyncEngine(db: db, api: api);
-      // Replace the periodic timer with a no-op so it doesn't fire during
-      // this short test and interfere with the second-sync assertion.
-      engine.testTimerActive = false;
+      addTearDown(engine.dispose);
 
       // Fire the first sync — it will be blocked in the slow mock.
       final f1 = engine.sync();
@@ -63,8 +53,11 @@ void main() {
       final sw = Stopwatch()..start();
       await engine.sync();
       sw.stop();
-      expect(sw.elapsedMilliseconds, lessThan(20),
-          reason: 'second sync should short-circuit instantly');
+      expect(
+        sw.elapsedMilliseconds,
+        lessThan(20),
+        reason: 'second sync should short-circuit instantly',
+      );
 
       // Now let the first sync complete.
       release.complete();
@@ -76,49 +69,90 @@ void main() {
       // least assert the value we depend on is sane — otherwise the
       // production timer will fire at the wrong rate.
       expect(Config.syncPollInterval, const Duration(seconds: 45));
+      expect(Config.backgroundSyncInterval, const Duration(minutes: 15));
+    });
+
+    test(
+      'offline pass queues one background retry without calling the API',
+      () async {
+        final client = ApiClient()..accessToken = 'test-token';
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        var retries = 0;
+        final engine = SyncEngine(
+          db: db,
+          api: client,
+          enableForegroundTimer: false,
+          onlineCheck: () async => false,
+          scheduleBackgroundRetry: () async => retries += 1,
+        );
+        addTearDown(engine.dispose);
+
+        await engine.sync();
+
+        expect(engine.currentPhase, SyncPhase.offline);
+        expect(retries, 1);
+      },
+    );
+
+    test('manual force bypasses a stale offline connectivity result', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      var retries = 0;
+      final engine = SyncEngine(
+        db: db,
+        api: _SlowApi(Future<void>.value()),
+        enableForegroundTimer: false,
+        onlineCheck: () async => false,
+        scheduleBackgroundRetry: () async => retries += 1,
+      );
+      addTearDown(engine.dispose);
+
+      await engine.sync(force: true);
+
+      expect(engine.currentPhase, SyncPhase.done);
+      expect(retries, 0);
     });
   });
 }
 
-/// Wraps the production ApiClient but swaps in a controllable HTTP client
-/// so the sync() call holds open long enough for us to fire a second one.
-class _RecordingApi extends ApiClient {
-  _RecordingApi({required ApiClient client, required http.Client httpClient})
-      : _inner = client,
-        _http = httpClient;
+class _SlowApi extends ApiClient {
+  _SlowApi(this.release) {
+    accessToken = 'test-token';
+  }
 
-  final ApiClient _inner;
-  final http.Client _http;
+  final Future<void> release;
 
-  @override
-  bool get isAuthenticated => _inner.isAuthenticated;
-
-  @override
-  String? get accessToken => _inner.accessToken;
+  Map<String, dynamic> get _emptyDelta => const {
+    'items': <dynamic>[],
+    'cursor': 0,
+    'has_more': false,
+  };
 
   @override
-  String? get refreshToken => _inner.refreshToken;
+  Future<Map<String, dynamic>> listCourses({int? since}) async {
+    await release;
+    return _emptyDelta;
+  }
 
   @override
-  set accessToken(String? v) => _inner.accessToken = v;
-  @override
-  set refreshToken(String? v) => _inner.refreshToken = v;
+  Future<Map<String, dynamic>> listAgenda({int? since}) async => _emptyDelta;
 
   @override
-  http.Client get _client => _http;
+  Future<Map<String, dynamic>> listLessons({int? since}) async => _emptyDelta;
 
   @override
-  Future<Map<String, dynamic>> listCourses({int? since}) async =>
-      _inner.listCourses(since: since);
+  Future<Map<String, dynamic>> listChapters({int? since}) async => _emptyDelta;
+
+  @override
+  Future<Map<String, dynamic>> listRecordings({int? since}) async =>
+      _emptyDelta;
+
+  @override
+  Future<Map<String, dynamic>> listStudy({int? since}) async => const {
+    'summaries': <dynamic>[],
+    'exercises': <dynamic>[],
+    'quizzes': <dynamic>[],
+    'cursor': 0,
+  };
 }
-
-extension on SyncEngine {
-  // Test-only hooks for the periodic timer.
-  bool get testTimerActive => true;
-  set testTimerActive(bool _) {} // default no-op (timer is real)
-  // Test-only hook for counting calls.
-  void Function()? get testScheduleSync => null;
-  set testScheduleSync(void Function()? _) {}
-}
-
-

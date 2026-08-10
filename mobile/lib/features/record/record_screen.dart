@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_theme.dart';
 import '../../db/app_database.dart';
 import '../../providers.dart';
+import '../recording/recording_player_screen.dart';
 import '../recording/recorder_service.dart';
 
 /// Shows every recording and whether it's safely backed up or still pending.
@@ -16,7 +18,6 @@ class RecordScreen extends ConsumerStatefulWidget {
 
 class _RecordScreenState extends ConsumerState<RecordScreen> {
   bool _recording = false;
-  String? _activeChapter;
 
   Future<void> _toggle() async {
     final recorder = ref.read(recorderServiceProvider);
@@ -24,7 +25,6 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       await recorder.stop();
       setState(() {
         _recording = false;
-        _activeChapter = null;
       });
       // Kick a sync right away so the new recording starts uploading without
       // waiting for the periodic timer (default 45s) or a manual button tap.
@@ -44,22 +44,19 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       await recorder.start(chapterClientUuid: chapterUuid);
       setState(() {
         _recording = true;
-        _activeChapter = chapterUuid;
       });
     }
   }
 
   Future<String?> _pickChapter() async {
     final db = ref.read(databaseProvider);
-    final chapters = await (db.select(db.chapters)
-          ..where((c) => c.deleted.equals(false)))
-        .get();
+    final chapters = await (db.select(
+      db.chapters,
+    )..where((c) => c.deleted.equals(false))).get();
     if (chapters.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Create a course and chapter first.'),
-          ),
+          const SnackBar(content: Text('Create a course and chapter first.')),
         );
       }
       return null;
@@ -89,7 +86,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Card(
-            color: _recording ? Colors.red.shade50 : null,
+            color: _recording ? const Color(0xFFFDE8E5) : null,
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -99,7 +96,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                     children: [
                       Icon(
                         _recording ? Icons.fiber_manual_record : Icons.mic,
-                        color: _recording ? Colors.red : Colors.indigo,
+                        color: _recording ? AppColors.error : AppColors.primary,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -115,7 +112,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor: _recording ? Colors.red : Colors.indigo,
+                      backgroundColor: _recording
+                          ? AppColors.error
+                          : AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     onPressed: _toggle,
@@ -147,21 +146,35 @@ class _RecordingTile extends StatelessWidget {
   final Recording recording;
 
   (IconData, Color, String) get _statusMeta => switch (recording.status) {
-        'local_only' ||
-        'pending_sync' =>
-          (Icons.cloud_upload, Colors.orange, 'Waiting to upload'),
-        'uploading' => (Icons.cloud_upload, Colors.blue, 'Uploading…'),
-        'synced' => (Icons.cloud_done, Colors.green, 'Uploaded'),
-        'processing' => (Icons.psychology, Colors.blue, 'Generating summary…'),
-        'ready' => (Icons.check_circle, Colors.green, 'Study material ready'),
-        _ => (Icons.error_outline, Colors.red, 'Sync failed'),
-      };
+    'local_only' || 'pending_sync' => (
+      Icons.cloud_upload,
+      AppColors.warning,
+      'Waiting to upload',
+    ),
+    'uploading' => (Icons.cloud_upload, AppColors.secondary, 'Uploading…'),
+    'synced' => (Icons.cloud_done, AppColors.success, 'Uploaded'),
+    'processing' => (
+      Icons.psychology,
+      AppColors.secondary,
+      'Generating summary…',
+    ),
+    'ready' => (Icons.check_circle, AppColors.success, 'Study material ready'),
+    _ => (Icons.error_outline, AppColors.error, 'Sync failed'),
+  };
 
   @override
   Widget build(BuildContext context) {
-    final (icon, color, label) = _statusMeta;
+    final (_, color, label) = _statusMeta;
     return Card(
       child: ListTile(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RecordingPlayerScreen(
+              recording: recording,
+              chapterTitle: recording.fileName ?? 'Enregistrement',
+            ),
+          ),
+        ),
         leading: Icon(Icons.audiotrack, color: color),
         title: Text(recording.fileName ?? 'Recording'),
         subtitle: Column(
@@ -171,7 +184,11 @@ class _RecordingTile extends StatelessWidget {
             Text(label, style: TextStyle(color: color, fontSize: 12)),
           ],
         ),
-        trailing: Icon(icon, color: color),
+        trailing: const Icon(
+          Icons.play_circle_fill_rounded,
+          color: AppColors.primary,
+          size: 34,
+        ),
       ),
     );
   }

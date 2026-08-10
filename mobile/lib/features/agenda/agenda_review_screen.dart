@@ -1,15 +1,18 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
-import '../../api/api_client.dart';
+import '../../core/app_theme.dart';
 import '../../core/agenda_item.dart';
+import '../../db/app_database.dart';
 import '../../providers.dart';
 
 /// Confirmation screen shared by the agenda scan and iCal import flows.
 ///
 /// The user sees one editable card per parsed draft. Editing any field
-/// keeps the changes local until they tap Save, which upserts the
-/// final list via `POST /api/agenda` (one request per item).
+/// keeps the changes local until they tap Save. Confirmed items are inserted
+/// into Drift first, then the regular background sync pushes them to the API.
 class AgendaReviewScreen extends ConsumerStatefulWidget {
   const AgendaReviewScreen({super.key, required this.drafts});
   final List<AgendaItemDraft> drafts;
@@ -31,33 +34,50 @@ class _AgendaReviewScreenState extends ConsumerState<AgendaReviewScreen> {
   Future<void> _saveAll() async {
     if (_saving) return;
     setState(() => _saving = true);
-    final api = ref.read(apiClientProvider);
+    final db = ref.read(databaseProvider);
     int saved = 0;
     try {
       for (var i = 0; i < _items.length; i++) {
         final it = _items[i];
         if (it.title.trim().isEmpty) continue;
-        await api.upsertAgenda({
-          'client_uuid': 'agenda-${DateTime.now().microsecondsSinceEpoch}-$i',
-          'title': it.title.trim(),
-          if (it.startsAt != null && it.startsAt!.isNotEmpty)
-            'starts_at': it.startsAt,
-          if (it.endsAt != null && it.endsAt!.isNotEmpty) 'ends_at': it.endsAt,
-          if (it.notes != null && it.notes!.isNotEmpty) 'notes': it.notes,
-        });
+        await db
+            .into(db.agendaItems)
+            .insert(
+              AgendaItemsCompanion.insert(
+                clientUuid: const Uuid().v4(),
+                title: it.title.trim(),
+                kind: Value(it.kind),
+                subject: Value(it.subject),
+                startsAt: Value(DateTime.tryParse(it.startsAt ?? '')),
+                endsAt: Value(DateTime.tryParse(it.endsAt ?? '')),
+                notes: Value(it.notes),
+                location: Value(it.location),
+                recurrence: Value(it.recurrence),
+                recurrenceUntil: Value(
+                  DateTime.tryParse(it.recurrenceUntil ?? ''),
+                ),
+                reminderMinutes: Value(it.reminderMinutes),
+                chapterClientUuid: Value(it.chapterClientUuid),
+              ),
+            );
         saved++;
       }
+      Future.microtask(() => ref.read(syncEngineProvider).sync());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved $saved agenda item${saved == 1 ? "" : "s"}.')),
+          SnackBar(
+            content: Text(
+              '$saved élément${saved == 1 ? '' : 's'} enregistré${saved == 1 ? '' : 's'} sur cet appareil.',
+            ),
+          ),
         );
         Navigator.of(context).pop(saved);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
         setState(() => _saving = false);
       }
     }
@@ -75,7 +95,8 @@ class _AgendaReviewScreenState extends ConsumerState<AgendaReviewScreen> {
             onPressed: _saving ? null : _saveAll,
             icon: _saving
                 ? const SizedBox(
-                    width: 18, height: 18,
+                    width: 18,
+                    height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.save),
@@ -86,7 +107,7 @@ class _AgendaReviewScreenState extends ConsumerState<AgendaReviewScreen> {
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (ctx, i) => _DraftCard(
           key: ValueKey('agenda-draft-$i-${_items[i].title}'),
           draft: _items[i],
@@ -152,9 +173,8 @@ class _DraftCard extends StatelessWidget {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    onChanged: (v) => onChanged(
-                      draft.copyWith(endsAt: v.isEmpty ? null : v),
-                    ),
+                    onChanged: (v) =>
+                        onChanged(draft.copyWith(endsAt: v.isEmpty ? null : v)),
                   ),
                 ),
               ],
@@ -167,9 +187,8 @@ class _DraftCard extends StatelessWidget {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (v) => onChanged(
-                draft.copyWith(notes: v.isEmpty ? null : v),
-              ),
+              onChanged: (v) =>
+                  onChanged(draft.copyWith(notes: v.isEmpty ? null : v)),
             ),
             const SizedBox(height: 4),
             Align(
@@ -178,7 +197,7 @@ class _DraftCard extends StatelessWidget {
                 onPressed: onRemove,
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Remove'),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
               ),
             ),
           ],

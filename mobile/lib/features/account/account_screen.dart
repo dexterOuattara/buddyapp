@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../api/api_client.dart';
+import '../../core/app_theme.dart';
 import '../../providers.dart';
 import '../auth/auth_controller.dart';
 
@@ -48,7 +48,8 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
             leading: const CircleAvatar(child: Icon(Icons.person)),
             title: Text(user?['email'] as String? ?? 'You'),
             subtitle: Text(
-                subscription == null ? 'No active plan' : 'Signed in'),
+              subscription == null ? 'No active plan' : 'Signed in',
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -58,8 +59,10 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Subscription',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Subscription',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 8),
                 if (_loading)
                   const LinearProgressIndicator()
@@ -111,8 +114,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
         ),
         const SizedBox(height: 24),
         OutlinedButton.icon(
-          onPressed: () =>
-              ref.read(authControllerProvider.notifier).logout(),
+          onPressed: () => ref.read(authControllerProvider.notifier).logout(),
           icon: const Icon(Icons.logout),
           label: const Text('Log out'),
         ),
@@ -121,11 +123,11 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
   }
 
   String _prettyPlan(String? plan) => switch (plan) {
-        'trial' => 'Free trial',
-        'monthly' => 'Monthly',
-        'annual' => 'Annual',
-        _ => plan ?? '—',
-      };
+    'trial' => 'Free trial',
+    'monthly' => 'Monthly',
+    'annual' => 'Annual',
+    _ => plan ?? '—',
+  };
 
   String _formatDate(String? iso) {
     if (iso == null) return '—';
@@ -147,8 +149,10 @@ class _PlanRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          SizedBox(width: 80, child: Text(label,
-              style: const TextStyle(color: Colors.grey))),
+          SizedBox(
+            width: 80,
+            child: Text(label, style: const TextStyle(color: AppColors.muted)),
+          ),
           Expanded(child: Text(value)),
         ],
       ),
@@ -171,18 +175,20 @@ class _PlanChoice extends StatelessWidget {
     return ListTile(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: highlighted ? Colors.indigo : Colors.grey.shade300),
+        side: BorderSide(
+          color: highlighted ? AppColors.secondary : AppColors.outline,
+        ),
       ),
       title: Text(title),
       subtitle: Text(subtitle),
-      trailing: highlighted
-          ? const Chip(label: Text('Best value'))
-          : null,
+      trailing: highlighted ? const Chip(label: Text('Best value')) : null,
       onTap: () {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Billing integration (App Store / Play / Stripe) '
-                'is a tracked open decision.'),
+            content: Text(
+              'Billing integration (App Store / Play / Stripe) '
+              'is a tracked open decision.',
+            ),
           ),
         );
       },

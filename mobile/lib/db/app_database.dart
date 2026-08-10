@@ -49,9 +49,20 @@ class AgendaItems extends Table {
   TextColumn get clientUuid => text().unique()();
   TextColumn get serverId => text().nullable()();
   TextColumn get title => text()();
+
+  /// course | revision | reminder
+  TextColumn get kind => text().withDefault(const Constant('course'))();
+  TextColumn get subject => text().nullable()();
   TextColumn get notes => text().nullable()();
+  TextColumn get location => text().nullable()();
   DateTimeColumn get startsAt => dateTime().nullable()();
   DateTimeColumn get endsAt => dateTime().nullable()();
+
+  /// none | weekly
+  TextColumn get recurrence => text().withDefault(const Constant('none'))();
+  DateTimeColumn get recurrenceUntil => dateTime().nullable()();
+  IntColumn get reminderMinutes => integer().nullable()();
+  TextColumn get chapterClientUuid => text().nullable()();
   BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
   IntColumn get syncVersion => integer().withDefault(const Constant(0))();
@@ -65,6 +76,7 @@ class Recordings extends Table {
   TextColumn get localPath => text()();
   TextColumn get fileName => text().nullable()();
   IntColumn get durationSecs => integer().nullable()();
+
   /// local_only | pending_sync | uploading | synced | processing | ready | failed
   TextColumn get status => text().withDefault(const Constant('local_only'))();
   IntColumn get uploadedBytes => integer().withDefault(const Constant(0))();
@@ -72,28 +84,66 @@ class Recordings extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Full transcript plus sentence-level timecodes downloaded after processing.
+/// It is kept locally so text and synchronized playback work without a network.
+class Transcripts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get serverId => text().unique()();
+  TextColumn get recordingServerId => text()();
+  TextColumn get recordingClientUuid => text().unique()();
+  TextColumn get content => text()();
+  TextColumn get language => text().nullable()();
+  TextColumn get segmentsJson => text().withDefault(const Constant('[]'))();
+  IntColumn get syncVersion => integer().withDefault(const Constant(0))();
+}
+
 class Summaries extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get serverId => text().nullable()();
+  TextColumn get recordingServerId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get contentMd => text()();
-  TextColumn get status => text().withDefault(const Constant('pending_review'))();
+  TextColumn get structuredJson => text().nullable()();
+  TextColumn get status =>
+      text().withDefault(const Constant('pending_review'))();
   IntColumn get syncVersion => integer().withDefault(const Constant(0))();
 }
 
 class Exercises extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get serverId => text().nullable()();
+  TextColumn get recordingServerId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get itemsJson => text()();
-  TextColumn get status => text().withDefault(const Constant('pending_review'))();
+  TextColumn get status =>
+      text().withDefault(const Constant('pending_review'))();
   IntColumn get syncVersion => integer().withDefault(const Constant(0))();
 }
 
 class Quizzes extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get serverId => text().nullable()();
+  TextColumn get recordingServerId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get questionsJson => text()();
-  TextColumn get status => text().withDefault(const Constant('pending_review'))();
+  TextColumn get status =>
+      text().withDefault(const Constant('pending_review'))();
   IntColumn get syncVersion => integer().withDefault(const Constant(0))();
+}
+
+/// Quiz results are written locally first, then idempotently pushed by
+/// [SyncEngine]. This keeps mastery and course progress available offline.
+class QuizAttempts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientUuid => text().unique()();
+  TextColumn get serverId => text().nullable()();
+  TextColumn get quizServerId => text()();
+  TextColumn get chapterClientUuid => text()();
+  IntColumn get score => integer()();
+  IntColumn get total => integer()();
+  TextColumn get answersJson => text()();
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get takenAt => dateTime().withDefault(currentDateAndTime)();
 }
 
 /// Small key-value store for sync cursors + auth tokens.
@@ -111,9 +161,11 @@ class Meta extends Table {
     Chapters,
     AgendaItems,
     Recordings,
+    Transcripts,
     Summaries,
     Exercises,
     Quizzes,
+    QuizAttempts,
     Meta,
   ],
 )
@@ -123,11 +175,40 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {},
-      );
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(agendaItems, agendaItems.kind);
+        await m.addColumn(agendaItems, agendaItems.subject);
+        await m.addColumn(agendaItems, agendaItems.location);
+        await m.addColumn(agendaItems, agendaItems.recurrence);
+        await m.addColumn(agendaItems, agendaItems.recurrenceUntil);
+        await m.addColumn(agendaItems, agendaItems.reminderMinutes);
+        await m.addColumn(agendaItems, agendaItems.chapterClientUuid);
+      }
+      if (from < 3) {
+        await m.addColumn(summaries, summaries.serverId);
+        await m.addColumn(summaries, summaries.recordingServerId);
+        await m.addColumn(summaries, summaries.structuredJson);
+        await m.addColumn(exercises, exercises.serverId);
+        await m.addColumn(exercises, exercises.recordingServerId);
+        await m.addColumn(quizzes, quizzes.serverId);
+        await m.addColumn(quizzes, quizzes.recordingServerId);
+        await m.createTable(quizAttempts);
+        // Re-fetch study rows once so databases created before v3 receive
+        // the server ids required for idempotent quiz-attempt sync.
+        await customStatement("DELETE FROM meta WHERE key = 'study'");
+      }
+      if (from < 4) {
+        await m.createTable(transcripts);
+        // Fetch the newly exposed transcript feed even if study content was
+        // already synchronized by an older app version.
+        await customStatement("DELETE FROM meta WHERE key = 'study'");
+      }
+    },
+  );
 }

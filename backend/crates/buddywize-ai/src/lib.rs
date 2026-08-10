@@ -16,7 +16,7 @@ pub use cloudflare_whisper::{CloudflareWhisperConfig, CloudflareWhisperStt};
 pub use deepseek::{DeepSeekConfig, DeepSeekStudyGenerator};
 pub use providers::{
     AgendaItemDraft, AgendaParser, Exercise, GeneratedContent, QuizQuestion, SttProvider,
-    StudyGenerator, Transcript,
+    StudyGenerator, Transcript, TranscriptSegment,
 };
 pub use whisper::{WhisperConfig, WhisperStt};
 

@@ -3,7 +3,6 @@
 // These exercise the request helper directly. Each test installs a fake
 // `http.Client` so no real network is involved.
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -19,9 +18,7 @@ http.Client _fakeClient(Future<http.Response> Function(http.Request) handler) {
 void main() {
   group('ApiClient _withRefresh', () {
     test('returns the response normally on 200', () async {
-      final client = _fakeClient(
-        (req) async => http.Response('{"ok":1}', 200),
-      );
+      final client = _fakeClient((req) async => http.Response('{"ok":1}', 200));
       final api = ApiClient(client: client);
       final body = await api.listCourses();
       expect(body['ok'], 1);
@@ -133,6 +130,38 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       await sub.cancel();
       expect(events, hasLength(1));
+    });
+  });
+
+  group('quiz attempts', () {
+    test('posts the device idempotency key and decodes history arrays', () async {
+      Map<String, dynamic>? posted;
+      final client = _fakeClient((request) async {
+        if (request.method == 'POST') {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            '{"id":"server-attempt","client_uuid":"client-attempt"}',
+            200,
+          );
+        }
+        return http.Response(
+          '[{"id":"server-attempt","client_uuid":"client-attempt","score":8,"total":10}]',
+          200,
+        );
+      });
+      final api = ApiClient(client: client)..accessToken = 'token';
+
+      final created = await api.recordQuizAttempt('quiz-id', {
+        'client_uuid': 'client-attempt',
+        'score': 8,
+        'total': 10,
+        'answers': <dynamic>[],
+      });
+      final history = await api.listQuizAttempts('quiz-id');
+
+      expect(created['id'], 'server-attempt');
+      expect(posted?['client_uuid'], 'client-attempt');
+      expect(history.single['score'], 8);
     });
   });
 }

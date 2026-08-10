@@ -12,7 +12,6 @@
 //! envelope.
 
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -21,7 +20,9 @@ use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::providers::{SttProvider, Transcript};
+use crate::providers::{
+    estimate_word_timings, SttProvider, Transcript, TranscriptSegment, TranscriptWord,
+};
 
 /// Cloudflare's per-request audio payload cap. We stay safely under it.
 const MAX_BYTES_PER_SEGMENT: u64 = 20 * 1024 * 1024;
@@ -42,14 +43,20 @@ impl CloudflareWhisperConfig {
         let token = std::env::var("CF_AI_TOKEN")
             .ok()
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow::anyhow!(
-                "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read)"
-            ))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read)"
+                )
+            })?;
         let model = std::env::var("CF_WHISPER_MODEL")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "@cf/openai/whisper-large-v3-turbo".to_string());
-        Ok(Self { account_id, token, model })
+        Ok(Self {
+            account_id,
+            token,
+            model,
+        })
     }
 }
 
@@ -80,10 +87,7 @@ impl CloudflareWhisperStt {
             .output()
             .await?;
         if !out.status.success() {
-            anyhow::bail!(
-                "ffprobe failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            anyhow::bail!("ffprobe failed: {}", String::from_utf8_lossy(&out.stderr));
         }
         let s = String::from_utf8_lossy(&out.stdout);
         let trimmed = s.trim();
@@ -147,7 +151,7 @@ impl CloudflareWhisperStt {
     async fn transcribe_segment(
         &self,
         audio_path: &std::path::Path,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<CloudflareTranscript> {
         let bytes = tokio::fs::read(audio_path).await?;
         if bytes.is_empty() {
             anyhow::bail!("audio segment is empty: {}", audio_path.display());
@@ -192,7 +196,7 @@ impl CloudflareWhisperStt {
         let parsed: WhisperResponse = resp.json().await?;
         // Cloudflare v4 envelope: `{success, result: {text, ...}}`. Some
         // endpoints put fields at the top level; both shapes are handled.
-        Ok(parsed.into_text())
+        Ok(parsed.into_transcript())
     }
 }
 
@@ -223,22 +227,59 @@ impl SttProvider for CloudflareWhisperStt {
             .await?;
 
         let slices = self.slice_audio(&audio_path, &tmp_dir).await?;
-        tracing::info!(
-            segments = slices.len(),
-            "Cloudflare Whisper: audio sliced"
-        );
+        tracing::info!(segments = slices.len(), "Cloudflare Whisper: audio sliced");
 
         let mut texts = Vec::with_capacity(slices.len());
+        let mut segments = Vec::new();
+        let mut language = None;
+        let mut offset_ms = 0_i64;
         for (i, slice) in slices.iter().enumerate() {
             match self.transcribe_segment(slice).await {
-                Ok(t) => {
+                Ok(chunk) => {
+                    let slice_duration_ms = (self.probe_duration(slice).await? * 1000.0)
+                        .round()
+                        .max(1.0) as i64;
                     tracing::info!(
                         segment = i + 1,
                         of = slices.len(),
-                        chars = t.len(),
+                        chars = chunk.text.len(),
+                        cues = chunk.segments.len(),
                         "Cloudflare Whisper: segment transcribed"
                     );
-                    texts.push(t);
+                    if language.is_none() {
+                        language = chunk.language;
+                    }
+                    if chunk.segments.is_empty() && !chunk.text.trim().is_empty() {
+                        segments.push(TranscriptSegment {
+                            start_ms: offset_ms,
+                            end_ms: offset_ms + slice_duration_ms,
+                            words: estimate_word_timings(
+                                chunk.text.trim(),
+                                offset_ms,
+                                offset_ms + slice_duration_ms,
+                            ),
+                            text: chunk.text.trim().to_string(),
+                        });
+                    } else {
+                        segments.extend(chunk.segments.into_iter().map(|cue| {
+                            TranscriptSegment {
+                                start_ms: cue.start_ms + offset_ms,
+                                end_ms: cue.end_ms + offset_ms,
+                                text: cue.text,
+                                words: cue
+                                    .words
+                                    .into_iter()
+                                    .map(|word| TranscriptWord {
+                                        start_ms: word.start_ms + offset_ms,
+                                        end_ms: word.end_ms + offset_ms,
+                                        text: word.text,
+                                    })
+                                    .collect(),
+                            }
+                        }));
+                    }
+                    texts.push(chunk.text);
+                    offset_ms += slice_duration_ms;
                 }
                 Err(e) => {
                     // Best-effort cleanup before propagating.
@@ -260,7 +301,8 @@ impl SttProvider for CloudflareWhisperStt {
 
         Ok(Transcript {
             text: combined,
-            language: None, // Cloudflare's response includes `detected_language` but we keep the field None for compatibility.
+            language,
+            segments,
         })
     }
 }
@@ -273,6 +315,10 @@ struct WhisperResponse {
     /// Some endpoints return the fields at the top level; tolerate that too.
     #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    segments: Vec<CloudflareSegment>,
+    #[serde(default)]
+    transcription_info: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,18 +326,102 @@ struct WhisperResult {
     #[serde(default)]
     text: Option<String>,
     #[serde(default)]
-    word_count: Option<u32>,
+    #[serde(rename = "word_count")]
+    _word_count: Option<u32>,
     #[serde(default)]
     transcription_info: Option<serde_json::Value>,
+    #[serde(default)]
+    segments: Vec<CloudflareSegment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudflareSegment {
+    start: f64,
+    end: f64,
+    text: String,
+    #[serde(default)]
+    words: Vec<CloudflareWord>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudflareWord {
+    start: f64,
+    end: f64,
+    #[serde(default)]
+    word: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[derive(Debug)]
+struct CloudflareTranscript {
+    text: String,
+    language: Option<String>,
+    segments: Vec<TranscriptSegment>,
 }
 
 impl WhisperResponse {
-    /// Extract the transcribed text from either envelope shape.
-    fn into_text(self) -> String {
-        if let Some(r) = self.result {
-            r.text.unwrap_or_default()
+    /// Extract text, language and time-aligned cues from either response shape.
+    fn into_transcript(self) -> CloudflareTranscript {
+        let (text, segments, info) = if let Some(result) = self.result {
+            (
+                result.text.unwrap_or_default(),
+                result.segments,
+                result.transcription_info,
+            )
         } else {
-            self.text.unwrap_or_default()
+            (
+                self.text.unwrap_or_default(),
+                self.segments,
+                self.transcription_info,
+            )
+        };
+        let language = info.as_ref().and_then(|value| {
+            value
+                .get("language")
+                .or_else(|| value.get("detected_language"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        });
+        let segments = segments
+            .into_iter()
+            .filter_map(|segment| {
+                let text = segment.text.trim().to_string();
+                let start_ms = (segment.start.max(0.0) * 1000.0).round() as i64;
+                let end_ms = (segment.end.max(0.0) * 1000.0).round() as i64;
+                let mut words = segment
+                    .words
+                    .into_iter()
+                    .filter_map(|word| {
+                        let text = word.word.or(word.text)?.trim().to_string();
+                        let word_start_ms =
+                            (word.start.max(segment.start).max(0.0) * 1000.0).round() as i64;
+                        let word_end_ms =
+                            (word.end.min(segment.end).max(0.0) * 1000.0).round() as i64;
+                        (!text.is_empty() && word_end_ms > word_start_ms).then_some(
+                            TranscriptWord {
+                                start_ms: word_start_ms,
+                                end_ms: word_end_ms,
+                                text,
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                if words.is_empty() {
+                    words = estimate_word_timings(&text, start_ms, end_ms);
+                }
+                (!text.is_empty() && end_ms > start_ms).then_some(TranscriptSegment {
+                    start_ms,
+                    end_ms,
+                    text,
+                    words,
+                })
+            })
+            .collect();
+        CloudflareTranscript {
+            text,
+            language,
+            segments,
         }
     }
 }
@@ -299,8 +429,7 @@ impl WhisperResponse {
 /// RFC 4648 base64 encoder. Avoids pulling in the `base64` crate for one
 /// call site.
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= input.len() {
@@ -399,20 +528,66 @@ mod tests {
             }
         }"#;
         let parsed: WhisperResponse = serde_json::from_str(body).unwrap();
-        assert_eq!(parsed.into_text(), "Hello world");
+        let transcript = parsed.into_transcript();
+        assert_eq!(transcript.text, "Hello world");
+        assert_eq!(transcript.language.as_deref(), Some("en"));
     }
 
     #[test]
     fn parses_top_level_text_fallback() {
         let body = r#"{"text": "fallback", "word_count": 1}"#;
         let parsed: WhisperResponse = serde_json::from_str(body).unwrap();
-        assert_eq!(parsed.into_text(), "fallback");
+        assert_eq!(parsed.into_transcript().text, "fallback");
     }
 
     #[test]
     fn empty_response_yields_empty_text() {
         let body = r#"{"success": true, "result": {}}"#;
         let parsed: WhisperResponse = serde_json::from_str(body).unwrap();
-        assert_eq!(parsed.into_text(), "");
+        assert_eq!(parsed.into_transcript().text, "");
+    }
+
+    #[test]
+    fn parses_timed_segments() {
+        let body = r#"{
+            "result": {
+                "text": "Bonjour le monde",
+                "segments": [
+                    {"start": 0.1, "end": 1.4, "text": " Bonjour"},
+                    {"start": 1.4, "end": 2.8, "text": "le monde"}
+                ]
+            }
+        }"#;
+        let transcript = serde_json::from_str::<WhisperResponse>(body)
+            .unwrap()
+            .into_transcript();
+        assert_eq!(transcript.segments.len(), 2);
+        assert_eq!(transcript.segments[0].start_ms, 100);
+        assert_eq!(transcript.segments[1].end_ms, 2800);
+        assert_eq!(transcript.segments[0].words.len(), 1);
+        assert_eq!(transcript.segments[1].words.len(), 2);
+    }
+
+    #[test]
+    fn preserves_provider_word_timestamps_when_present() {
+        let body = r#"{
+            "result": {
+                "text": "Bonjour monde",
+                "segments": [{
+                    "start": 0.0,
+                    "end": 1.0,
+                    "text": "Bonjour monde",
+                    "words": [
+                        {"start": 0.0, "end": 0.4, "word": "Bonjour"},
+                        {"start": 0.4, "end": 1.0, "word": "monde"}
+                    ]
+                }]
+            }
+        }"#;
+        let transcript = serde_json::from_str::<WhisperResponse>(body)
+            .unwrap()
+            .into_transcript();
+        assert_eq!(transcript.segments[0].words[1].start_ms, 400);
+        assert_eq!(transcript.segments[0].words[1].text, "monde");
     }
 }

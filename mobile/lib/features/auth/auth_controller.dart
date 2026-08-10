@@ -1,18 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api_client.dart';
 import '../../providers.dart';
+import '../../sync/background_sync.dart';
+import 'auth_session_store.dart';
 
 /// Manages the authenticated session and trial/subscription state.
 class AuthController extends Notifier<bool> {
-  static const _kAccess = 'auth.access';
-  static const _kRefresh = 'auth.refresh';
-
   @override
   bool build() {
     final api = ref.watch(apiClientProvider);
-    _restore();
+    unawaited(_restore());
     final sub = api.onSessionCleared.listen((_) => _clearLocalOnly());
     ref.onDispose(sub.cancel);
     return api.isAuthenticated;
@@ -21,13 +21,10 @@ class AuthController extends Notifier<bool> {
   ApiClient get _api => ref.read(apiClientProvider);
 
   Future<void> _restore() async {
-    final prefs = await SharedPreferences.getInstance();
-    final access = prefs.getString(_kAccess);
-    final refresh = prefs.getString(_kRefresh);
-    if (access != null) {
-      _api.accessToken = access;
-      _api.refreshToken = refresh;
+    if (await AuthSessionStore.restore(_api)) {
       state = true;
+      await _registerBackgroundSync();
+      unawaited(ref.read(syncEngineProvider).sync());
     }
   }
 
@@ -43,19 +40,16 @@ class AuthController extends Notifier<bool> {
 
   Future<void> _persist(Map<String, dynamic> res) async {
     _api.applyAuthResponse(res);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kAccess, _api.accessToken ?? '');
-    await prefs.setString(_kRefresh, _api.refreshToken ?? '');
+    await AuthSessionStore.persist(_api);
     state = true;
-    // Start syncing right away.
-    ref.read(syncEngineProvider).sync();
+    await _registerBackgroundSync();
+    unawaited(ref.read(syncEngineProvider).sync());
   }
 
   Future<void> logout() async {
     _api.clearSession();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kAccess);
-    await prefs.remove(_kRefresh);
+    await AuthSessionStore.clear();
+    await _cancelBackgroundSync();
     state = false;
   }
 
@@ -63,12 +57,29 @@ class AuthController extends Notifier<bool> {
   /// Triggered when the API client itself detects an unrecoverable auth
   /// failure (e.g. refresh token revoked).
   Future<void> _clearLocalOnly() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kAccess);
-    await prefs.remove(_kRefresh);
+    await AuthSessionStore.clear();
+    await _cancelBackgroundSync();
     state = false;
+  }
+
+  Future<void> _registerBackgroundSync() async {
+    try {
+      await BackgroundSyncScheduler.registerForAuthenticatedUser();
+    } catch (_) {
+      // Login and local use must keep working even if Android temporarily
+      // refuses to schedule background work.
+    }
+  }
+
+  Future<void> _cancelBackgroundSync() async {
+    try {
+      await BackgroundSyncScheduler.cancelForSignedOutUser();
+    } catch (_) {
+      // The worker also exits immediately when it finds no saved session.
+    }
   }
 }
 
-final authControllerProvider =
-    NotifierProvider<AuthController, bool>(AuthController.new);
+final authControllerProvider = NotifierProvider<AuthController, bool>(
+  AuthController.new,
+);

@@ -32,19 +32,19 @@ class ApiClient {
 
   Uri _u(String path, [Map<String, String>? query]) {
     final cleaned = path.startsWith('/') ? path : '/$path';
-    return Uri.parse('${Config.apiBaseUrl}$cleaned').replace(
-      queryParameters: (query == null || query.isEmpty) ? null : query,
-    );
+    return Uri.parse(
+      '${Config.apiBaseUrl}$cleaned',
+    ).replace(queryParameters: (query == null || query.isEmpty) ? null : query);
   }
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
-      };
+    'Content-Type': 'application/json',
+    if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+  };
 
   Map<String, String> get _authHeaders => {
-        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
-      };
+    if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+  };
 
   // -------------------------------------------------------------------- auth
 
@@ -103,8 +103,7 @@ class ApiClient {
     int offset,
     List<int> bytes,
   ) async {
-    final uri =
-        _u('recordings/uploads/$uploadId/chunk', {'offset': '$offset'});
+    final uri = _u('recordings/uploads/$uploadId/chunk', {'offset': '$offset'});
     return _withRefresh(
       () => _client.put(uri, headers: _authHeaders, body: bytes),
     );
@@ -113,10 +112,25 @@ class ApiClient {
   Future<Map<String, dynamic>> completeUpload(String uploadId) =>
       _post('recordings/uploads/$uploadId/complete', const {});
 
+  Future<Map<String, dynamic>> reprocessRecording(String recordingId) =>
+      _post('recordings/$recordingId/reprocess', const {});
+
   // -------------------------------------------------------------------- study
 
   Future<Map<String, dynamic>> listStudy({int? since}) =>
       _get('study', since == null ? null : {'since': '$since'});
+
+  Future<Map<String, dynamic>> recordQuizAttempt(
+    String quizId,
+    Map<String, dynamic> body,
+  ) => _post('quizzes/$quizId/attempts', body);
+
+  Future<List<Map<String, dynamic>>> listQuizAttempts(String quizId) async {
+    final response = await _withRefreshRaw(
+      () => _client.get(_u('quizzes/$quizId/attempts'), headers: _headers),
+    );
+    return _decodeList(response).cast<Map<String, dynamic>>();
+  }
 
   // ----------------------------------------------------------------- agenda
 
@@ -127,12 +141,14 @@ class ApiClient {
     // the access token and retries — same pattern every other call uses.
     final resp = await _withRefreshRaw(() async {
       final req = http.MultipartRequest('POST', _u('agenda/parse'))
-        ..files.add(http.MultipartFile.fromBytes(
-          'image',
-          jpegBytes,
-          filename: 'agenda.jpg',
-          contentType: MediaType('image', 'jpeg'),
-        ));
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'image',
+            jpegBytes,
+            filename: 'agenda.jpg',
+            contentType: MediaType('image', 'jpeg'),
+          ),
+        );
       final streamed = await req.send();
       return http.Response.fromStream(streamed);
     });
@@ -148,11 +164,7 @@ class ApiClient {
   /// Used by endpoints whose body is a JSON array (agenda/ical).
   Future<http.Response> _postRaw(String path, Map<String, dynamic> body) =>
       _withRefreshRaw(
-        () => _client.post(
-          _u(path),
-          headers: _headers,
-          body: jsonEncode(body),
-        ),
+        () => _client.post(_u(path), headers: _headers, body: jsonEncode(body)),
       );
 
   Future<List<AgendaItemDraft>> importIcalText(String icsText) async {
@@ -266,15 +278,14 @@ class ApiClient {
     _sessionCleared.close();
   }
 
-  Future<Map<String, dynamic>> _get(String path,
-      [Map<String, String>? query]) {
+  Future<Map<String, dynamic>> _get(String path, [Map<String, String>? query]) {
     return _withRefresh(() => _client.get(_u(path, query), headers: _headers));
   }
 
-  Future<Map<String, dynamic>> _post(
-      String path, Map<String, dynamic> body) {
-    return _withRefresh(() =>
-        _client.post(_u(path), headers: _headers, body: jsonEncode(body)));
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) {
+    return _withRefresh(
+      () => _client.post(_u(path), headers: _headers, body: jsonEncode(body)),
+    );
   }
 
   Map<String, dynamic> _decode(http.Response res) {
@@ -296,15 +307,6 @@ class ApiClient {
     if (res.body.isEmpty) return const [];
     final decoded = jsonDecode(res.body);
     return decoded is List ? decoded : const [];
-  }
-
-  /// Throw on a non-2xx response. Used after multipart sends where the
-  /// stream isn't already wrapped by `_withRefresh`.
-  void _ensureOk(http.Response res) {
-    if (res.statusCode == 401) throw const ApiAuthException();
-    if (res.statusCode >= 400) {
-      throw ApiException(res.statusCode, res.body);
-    }
   }
 }
 

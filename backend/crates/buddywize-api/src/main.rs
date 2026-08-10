@@ -101,6 +101,7 @@ use utoipa_swagger_ui::SwaggerUi;
         buddywize_courses::study::SummaryDto,
         buddywize_courses::study::ExercisesDto,
         buddywize_courses::study::QuizDto,
+        buddywize_courses::study::TranscriptDto,
         buddywize_courses::study::StudyDelta,
         buddywize_courses::study::AttemptRequest,
         buddywize_courses::study::AttemptRow,

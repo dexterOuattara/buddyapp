@@ -12,7 +12,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use crate::providers::{SttProvider, Transcript};
+use crate::providers::{
+    estimate_word_timings, SttProvider, Transcript, TranscriptSegment, TranscriptWord,
+};
 
 /// Configuration for the Whisper provider.
 #[derive(Debug, Clone)]
@@ -48,7 +50,14 @@ impl WhisperConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or(5);
 
-        Ok(Self { python, script, model, device, compute_type, beam_size })
+        Ok(Self {
+            python,
+            script,
+            model,
+            device,
+            compute_type,
+            beam_size,
+        })
     }
 }
 
@@ -75,6 +84,24 @@ struct WhisperOutput {
     duration: Option<f64>,
     #[allow(dead_code)]
     wall_time_sec: Option<f64>,
+    #[serde(default)]
+    segments: Vec<WhisperOutputSegment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WhisperOutputSegment {
+    start: f64,
+    end: f64,
+    text: String,
+    #[serde(default)]
+    words: Vec<WhisperOutputWord>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WhisperOutputWord {
+    start: f64,
+    end: f64,
+    text: String,
 }
 
 #[async_trait]
@@ -111,6 +138,42 @@ impl SttProvider for WhisperStt {
         Ok(Transcript {
             text: output.text,
             language: output.language,
+            segments: output
+                .segments
+                .into_iter()
+                .filter_map(|segment| {
+                    let text = segment.text.trim().to_string();
+                    let start_ms = (segment.start.max(0.0) * 1000.0).round() as i64;
+                    let end_ms = (segment.end.max(0.0) * 1000.0).round() as i64;
+                    let mut words = segment
+                        .words
+                        .into_iter()
+                        .filter_map(|word| {
+                            let text = word.text.trim().to_string();
+                            let word_start_ms =
+                                (word.start.max(segment.start).max(0.0) * 1000.0).round() as i64;
+                            let word_end_ms =
+                                (word.end.min(segment.end).max(0.0) * 1000.0).round() as i64;
+                            (!text.is_empty() && word_end_ms > word_start_ms).then_some(
+                                TranscriptWord {
+                                    start_ms: word_start_ms,
+                                    end_ms: word_end_ms,
+                                    text,
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    if words.is_empty() {
+                        words = estimate_word_timings(&text, start_ms, end_ms);
+                    }
+                    (!text.is_empty() && end_ms > start_ms).then_some(TranscriptSegment {
+                        start_ms,
+                        end_ms,
+                        text,
+                        words,
+                    })
+                })
+                .collect(),
         })
     }
 }
@@ -169,6 +232,17 @@ data = {
     "language": "en",
     "duration": 1.0,
     "wall_time_sec": 0.001,
+    "segments": [
+        {"start": 0.0, "end": 0.45, "text": "hello world", "words": [
+            {"start": 0.0, "end": 0.2, "text": "hello"},
+            {"start": 0.2, "end": 0.45, "text": "world"}
+        ]},
+        {"start": 0.45, "end": 1.0, "text": "from fake whisper", "words": [
+            {"start": 0.45, "end": 0.6, "text": "from"},
+            {"start": 0.6, "end": 0.75, "text": "fake"},
+            {"start": 0.75, "end": 1.0, "text": "whisper"}
+        ]}
+    ],
 }
 # Verify the env vars the Rust side is supposed to set.
 for k in ("WHISPER_MODEL", "WHISPER_DEVICE", "WHISPER_COMPUTE_TYPE", "WHISPER_BEAM_SIZE"):
@@ -179,7 +253,8 @@ print(json.dumps(data))
 "#;
 
     fn write_fake_script() -> PathBuf {
-        let path = std::env::temp_dir().join(format!("fake-transcribe-{}.py", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("fake-transcribe-{}.py", uuid::Uuid::new_v4()));
         std::fs::write(&path, FAKE_SCRIPT).unwrap();
         path
     }
@@ -201,6 +276,12 @@ print(json.dumps(data))
         let transcript = stt.transcribe(b"fake audio bytes").await.unwrap();
         assert_eq!(transcript.text, "hello world from fake whisper");
         assert_eq!(transcript.language.as_deref(), Some("en"));
+        assert_eq!(transcript.segments.len(), 2);
+        assert_eq!(transcript.segments[1].start_ms, 450);
+        assert_eq!(transcript.segments[1].end_ms, 1000);
+        assert_eq!(transcript.segments[0].words.len(), 2);
+        assert_eq!(transcript.segments[1].words[2].text, "whisper");
+        assert_eq!(transcript.segments[1].words[2].start_ms, 750);
 
         let _ = std::fs::remove_file(script);
     }
@@ -259,10 +340,16 @@ print(json.dumps(data))
     fn from_env_uses_defaults_when_unset() {
         let suffix = "_buddywize_test_defaults";
         let vars = [
-            "WHISPER_PYTHON", "WHISPER_SCRIPT", "WHISPER_MODEL",
-            "WHISPER_DEVICE", "WHISPER_COMPUTE_TYPE", "WHISPER_BEAM_SIZE",
+            "WHISPER_PYTHON",
+            "WHISPER_SCRIPT",
+            "WHISPER_MODEL",
+            "WHISPER_DEVICE",
+            "WHISPER_COMPUTE_TYPE",
+            "WHISPER_BEAM_SIZE",
         ];
-        for v in vars { std::env::remove_var(format!("{v}{suffix}").as_str()); }
+        for v in vars {
+            std::env::remove_var(format!("{v}{suffix}").as_str());
+        }
 
         // We can't easily unprefix the real env vars (shared with other
         // tests), so just verify the structural properties of the result
@@ -273,7 +360,10 @@ print(json.dumps(data))
         assert!(!cfg.compute_type.is_empty());
         assert!(cfg.beam_size >= 1);
         assert!(cfg.beam_size <= 100);
-        assert!(cfg.script.components().count() >= 1 || cfg.script == PathBuf::from("bin/transcribe.py"));
+        assert!(
+            cfg.script.components().count() >= 1
+                || cfg.script == PathBuf::from("bin/transcribe.py")
+        );
     }
 
     #[test]

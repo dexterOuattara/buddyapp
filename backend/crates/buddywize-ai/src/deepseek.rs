@@ -42,11 +42,13 @@ impl DeepSeekConfig {
         let token = std::env::var("CF_AI_TOKEN")
             .ok()
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow::anyhow!(
+            .ok_or_else(|| {
+                anyhow::anyhow!(
                 "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read) \
                  to use the Cloudflare study generator. \
                  Set STUDY_GENERATOR=mock to use the deterministic offline template instead."
-            ))?;
+            )
+            })?;
         let temperature: f32 = std::env::var("CF_AI_TEMPERATURE")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -82,7 +84,11 @@ impl DeepSeekStudyGenerator {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("reqwest client builder");
-        Self { cfg, http, settings }
+        Self {
+            cfg,
+            http,
+            settings,
+        }
     }
 
     async fn pick_model(&self) -> String {
@@ -238,7 +244,9 @@ impl DeepSeekStudyGenerator {
                     ))
                 })?;
                 serde_json::from_str(&extracted).map_err(|e| {
-                    CallError::Parse(format!("extracted JSON did not match schema: {e}; extracted: {extracted}"))
+                    CallError::Parse(format!(
+                        "extracted JSON did not match schema: {e}; extracted: {extracted}"
+                    ))
                 })?
             }
         };
@@ -258,6 +266,9 @@ impl DeepSeekStudyGenerator {
 
         Ok(GeneratedContent {
             summary_markdown: content.summary_markdown,
+            key_points: content.key_points,
+            takeaway: content.takeaway,
+            flashcards: content.flashcards,
             exercises: content.exercises,
             quiz: content.quiz,
         })
@@ -275,7 +286,11 @@ fn build_user_prompt(chapter_title: &str, transcript: &Transcript) -> String {
     let lang_hint = transcript
         .language
         .as_deref()
-        .map(|l| format!("The transcript is in `{l}`. Generate the study material in the same language.\n"))
+        .map(|l| {
+            format!(
+                "The transcript is in `{l}`. Generate the study material in the same language.\n"
+            )
+        })
         .unwrap_or_default();
     format!(
         "Chapter title: {chapter_title}\n\
@@ -288,6 +303,9 @@ fn build_user_prompt(chapter_title: &str, transcript: &Transcript) -> String {
          Return JSON of the form:\n\
          {{\n\
          \x20 \"summary_markdown\": \"<Markdown summary, 3-6 sections, ~400-700 words>\",\n\
+         \x20 \"key_points\": [\"<3-5 concise essential ideas>\"],\n\
+         \x20 \"takeaway\": \"<one memorable practical takeaway>\",\n\
+         \x20 \"flashcards\": [{{ \"front\": \"<question>\", \"back\": \"<short answer>\" }}],\n\
          \x20 \"exercises\": [\n\
          \x20\x20\x20 {{ \"prompt\": \"...\", \"guidance\": \"...|null\", \"answer\": \"...|null\" }}\n\
          \x20\x20\x20 // exactly 3 items, increasing in difficulty\n\
@@ -295,6 +313,7 @@ fn build_user_prompt(chapter_title: &str, transcript: &Transcript) -> String {
          \x20 \"quiz\": [\n\
          \x20\x20\x20 {{\n\
          \x20\x20\x20\x20\x20 \"prompt\": \"...\",\n\
+         \x20\x20\x20\x20\x20 \"topic\": \"<short concept name>\",\n\
          \x20\x20\x20\x20\x20 \"choices\": [\"A\",\"B\",\"C\",\"D\"],   // exactly 4 choices\n\
          \x20\x20\x20\x20\x20 \"correct_index\": 0,             // 0..3\n\
          \x20\x20\x20\x20\x20 \"explanation\": \"...|null\"\n\
@@ -430,6 +449,12 @@ struct ChatChoiceMessage {
 #[derive(Debug, Deserialize)]
 struct GeneratedContentDto {
     summary_markdown: String,
+    #[serde(default)]
+    key_points: Vec<String>,
+    #[serde(default)]
+    takeaway: Option<String>,
+    #[serde(default)]
+    flashcards: Vec<crate::providers::Flashcard>,
     exercises: Vec<crate::providers::Exercise>,
     quiz: Vec<crate::providers::QuizQuestion>,
 }
@@ -448,26 +473,17 @@ mod tests {
 
     #[test]
     fn strip_code_fences_handles_plain_json() {
-        assert_eq!(
-            strip_code_fences(r#"{"a":1}"#),
-            r#"{"a":1}"#
-        );
+        assert_eq!(strip_code_fences(r#"{"a":1}"#), r#"{"a":1}"#);
     }
 
     #[test]
     fn strip_code_fences_handles_json_fenced_block() {
-        assert_eq!(
-            strip_code_fences("```json\n{\"a\":1}\n```"),
-            r#"{"a":1}"#
-        );
+        assert_eq!(strip_code_fences("```json\n{\"a\":1}\n```"), r#"{"a":1}"#);
     }
 
     #[test]
     fn strip_code_fences_handles_bare_fenced_block() {
-        assert_eq!(
-            strip_code_fences("```\n{\"a\":1}\n```"),
-            r#"{"a":1}"#
-        );
+        assert_eq!(strip_code_fences("```\n{\"a\":1}\n```"), r#"{"a":1}"#);
     }
 
     #[test]
@@ -475,6 +491,7 @@ mod tests {
         let t = Transcript {
             text: "hello".into(),
             language: Some("en".into()),
+            segments: vec![],
         };
         let s = build_user_prompt("Algebra", &t);
         assert!(s.contains("Algebra"));
@@ -485,7 +502,11 @@ mod tests {
 
     #[test]
     fn user_prompt_includes_language_hint_when_known() {
-        let t = Transcript { text: "x".into(), language: Some("fr".into()) };
+        let t = Transcript {
+            text: "x".into(),
+            language: Some("fr".into()),
+            segments: vec![],
+        };
         let s = build_user_prompt("X", &t);
         assert!(s.contains("`fr`"));
     }

@@ -7,10 +7,7 @@ pub mod study;
 
 use std::sync::Arc;
 
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::{routing::get, Router};
 use buddywize_ai::providers::AgendaParser;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -27,23 +24,53 @@ pub struct CourseState {
 pub fn router(state: CourseState) -> Router {
     Router::new()
         // agenda
-        .route("/agenda", get(handlers::list_agenda).post(handlers::upsert_agenda))
-        .route("/agenda/:client_uuid", axum::routing::delete(handlers::delete_agenda))
+        .route(
+            "/agenda",
+            get(handlers::list_agenda).post(handlers::upsert_agenda),
+        )
+        .route(
+            "/agenda/:client_uuid",
+            axum::routing::delete(handlers::delete_agenda),
+        )
         // agenda ingestion: photo (multipart) or iCal (JSON body)
-        .route("/agenda/parse", axum::routing::post(handlers::parse_agenda_image))
+        .route(
+            "/agenda/parse",
+            axum::routing::post(handlers::parse_agenda_image),
+        )
         .route("/agenda/ical", axum::routing::post(handlers::import_ical))
         // courses
-        .route("/courses", get(handlers::list_courses).post(handlers::upsert_course))
-        .route("/courses/:client_uuid", axum::routing::delete(handlers::delete_course))
+        .route(
+            "/courses",
+            get(handlers::list_courses).post(handlers::upsert_course),
+        )
+        .route(
+            "/courses/:client_uuid",
+            axum::routing::delete(handlers::delete_course),
+        )
         // lessons
-        .route("/lessons", get(handlers::list_lessons).post(handlers::upsert_lesson))
-        .route("/lessons/:client_uuid", axum::routing::delete(handlers::delete_lesson))
+        .route(
+            "/lessons",
+            get(handlers::list_lessons).post(handlers::upsert_lesson),
+        )
+        .route(
+            "/lessons/:client_uuid",
+            axum::routing::delete(handlers::delete_lesson),
+        )
         // chapters
-        .route("/chapters", get(handlers::list_chapters).post(handlers::upsert_chapter))
-        .route("/chapters/:client_uuid", axum::routing::delete(handlers::delete_chapter))
+        .route(
+            "/chapters",
+            get(handlers::list_chapters).post(handlers::upsert_chapter),
+        )
+        .route(
+            "/chapters/:client_uuid",
+            axum::routing::delete(handlers::delete_chapter),
+        )
         // study material + quiz attempts
         .route("/study", get(study::delta))
-        .route("/quizzes/:quiz_id/attempts", get(study::list_attempts).post(study::record_attempt))
+        .route(
+            "/quizzes/:quiz_id/attempts",
+            get(study::list_attempts).post(study::record_attempt),
+        )
         .with_state(state)
 }
 
@@ -54,9 +81,16 @@ pub struct AgendaRow {
     pub id: Uuid,
     pub client_uuid: Option<Uuid>,
     pub title: String,
+    pub kind: String,
+    pub subject: Option<String>,
     pub notes: Option<String>,
+    pub location: Option<String>,
     pub starts_at: Option<DateTime<Utc>>,
     pub ends_at: Option<DateTime<Utc>>,
+    pub recurrence: String,
+    pub recurrence_until: Option<DateTime<Utc>>,
+    pub reminder_minutes: Option<i32>,
+    pub chapter_client_uuid: Option<Uuid>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

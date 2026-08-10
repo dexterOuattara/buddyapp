@@ -21,6 +21,7 @@ pub struct SummaryDto {
     pub chapter_id: Uuid,
     pub recording_id: Uuid,
     pub content_md: String,
+    pub structured_content: Option<serde_json::Value>,
     pub sync_version: i64,
 }
 
@@ -42,8 +43,19 @@ pub struct QuizDto {
     pub sync_version: i64,
 }
 
+#[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
+pub struct TranscriptDto {
+    pub id: Uuid,
+    pub recording_id: Uuid,
+    pub content: String,
+    pub language: Option<String>,
+    pub segments: serde_json::Value,
+    pub sync_version: i64,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct StudyDelta {
+    pub transcripts: Vec<TranscriptDto>,
     pub summaries: Vec<SummaryDto>,
     pub exercises: Vec<ExercisesDto>,
     pub quizzes: Vec<QuizDto>,
@@ -63,8 +75,23 @@ pub async fn delta(
     AuthUser(user): AuthUser,
     Query(q): Query<SinceQuery>,
 ) -> ApiResult<Json<StudyDelta>> {
+    let transcripts: Vec<TranscriptDto> = sqlx::query_as(
+        "SELECT t.id, t.recording_id, t.content, t.language,
+                t.segments, t.sync_version
+           FROM transcripts t
+           JOIN recordings r ON r.id = t.recording_id
+          WHERE r.user_id = $1
+            AND ($2::bigint IS NULL OR t.sync_version > $2)
+          ORDER BY t.sync_version LIMIT 200",
+    )
+    .bind(user.sub)
+    .bind(q.since)
+    .fetch_all(&state.db)
+    .await?;
+
     let summaries: Vec<SummaryDto> = sqlx::query_as(
-        "SELECT s.id, s.chapter_id, s.recording_id, s.content_md, s.sync_version
+        "SELECT s.id, s.chapter_id, s.recording_id, s.content_md,
+                s.structured_content, s.sync_version
            FROM summaries s
            JOIN recordings r ON r.id = s.recording_id
           WHERE r.user_id = $1 AND s.status = 'approved'
@@ -102,19 +129,31 @@ pub async fn delta(
     .fetch_all(&state.db)
     .await?;
 
-    let cursor = summaries.iter().map(|s| s.sync_version)
+    let cursor = summaries
+        .iter()
+        .map(|s| s.sync_version)
+        .chain(transcripts.iter().map(|t| t.sync_version))
         .chain(exercises.iter().map(|e| e.sync_version))
         .chain(quizzes.iter().map(|q| q.sync_version))
         .max()
         .unwrap_or(q.since.unwrap_or(0));
 
-    Ok(Json(StudyDelta { summaries, exercises, quizzes, cursor }))
+    Ok(Json(StudyDelta {
+        transcripts,
+        summaries,
+        exercises,
+        quizzes,
+        cursor,
+    }))
 }
 
 // ---------------------------------------------------------------- quiz attempts
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AttemptRequest {
+    /// Device-generated idempotency key. Retried offline pushes cannot create
+    /// duplicate attempts.
+    pub client_uuid: Uuid,
     pub score: i32,
     pub total: i32,
     /// Optional answer breakdown, e.g. [{ question_index, choice, correct }].
@@ -125,6 +164,7 @@ pub struct AttemptRequest {
 #[derive(Debug, sqlx::FromRow, Serialize, ToSchema)]
 pub struct AttemptRow {
     pub id: Uuid,
+    pub client_uuid: Uuid,
     pub quiz_id: Uuid,
     pub score: i32,
     pub total: i32,
@@ -157,10 +197,17 @@ pub async fn record_attempt(
     .await?;
 
     let row: AttemptRow = sqlx::query_as(
-        "INSERT INTO quiz_attempts (quiz_id, user_id, score, total, answers)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, quiz_id, score, total, answers, taken_at",
+        "INSERT INTO quiz_attempts
+            (client_uuid, quiz_id, user_id, score, total, answers)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (client_uuid) DO UPDATE SET
+            score = EXCLUDED.score,
+            total = EXCLUDED.total,
+            answers = EXCLUDED.answers
+         WHERE quiz_attempts.user_id = $3 AND quiz_attempts.quiz_id = $2
+         RETURNING id, client_uuid, quiz_id, score, total, answers, taken_at",
     )
+    .bind(body.client_uuid)
     .bind(quiz_id)
     .bind(user.sub)
     .bind(body.score)
@@ -183,7 +230,7 @@ pub async fn list_attempts(
     Path(quiz_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<AttemptRow>>> {
     let rows: Vec<AttemptRow> = sqlx::query_as(
-        "SELECT id, quiz_id, score, total, answers, taken_at
+        "SELECT id, client_uuid, quiz_id, score, total, answers, taken_at
            FROM quiz_attempts
           WHERE quiz_id = $1 AND user_id = $2
           ORDER BY taken_at DESC

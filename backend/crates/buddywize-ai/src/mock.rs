@@ -4,8 +4,8 @@
 use async_trait::async_trait;
 
 use crate::providers::{
-    AgendaItemDraft, AgendaParser, Exercise, GeneratedContent, QuizQuestion, SttProvider,
-    StudyGenerator, Transcript,
+    estimate_word_timings, AgendaItemDraft, AgendaParser, Exercise, Flashcard, GeneratedContent,
+    QuizQuestion, SttProvider, StudyGenerator, Transcript, TranscriptSegment,
 };
 
 /// Produces a stable pseudo-transcript proportional to the audio size.
@@ -23,16 +23,28 @@ impl SttProvider for MockStt {
         let est_minutes = (audio.len() as f64 / 16_000.0 / 60.0).max(1.0);
         let sentences = (est_minutes as usize).clamp(2, 20);
         let mut text = String::new();
+        let mut segments = Vec::with_capacity(sentences);
         for i in 0..sentences {
-            text.push_str(&format!(
+            let sentence = format!(
                 "Point {}: the instructor introduced a concept, illustrated it with an example, \
                  and highlighted the common mistakes to avoid. ",
                 i + 1
-            ));
+            );
+            text.push_str(&sentence);
+            let start_ms = i as i64 * 30_000;
+            let end_ms = (i as i64 + 1) * 30_000;
+            let segment_text = sentence.trim().to_string();
+            segments.push(TranscriptSegment {
+                start_ms,
+                end_ms,
+                words: estimate_word_timings(&segment_text, start_ms, end_ms),
+                text: segment_text,
+            });
         }
         Ok(Transcript {
             text: text.trim().to_string(),
             language: Some("en".to_string()),
+            segments,
         })
     }
 }
@@ -77,11 +89,15 @@ impl StudyGenerator for MockStudyGenerator {
             },
             Exercise {
                 prompt: "Recreate the main worked example from this chapter without notes.".into(),
-                guidance: Some("If you get stuck, re-listen to the middle third of the recording.".into()),
+                guidance: Some(
+                    "If you get stuck, re-listen to the middle third of the recording.".into(),
+                ),
                 answer: None,
             },
             Exercise {
-                prompt: "Write down three questions you think an exam could ask about this chapter.".into(),
+                prompt:
+                    "Write down three questions you think an exam could ask about this chapter."
+                        .into(),
                 guidance: None,
                 answer: None,
             },
@@ -90,6 +106,7 @@ impl StudyGenerator for MockStudyGenerator {
         let quiz = vec![
             QuizQuestion {
                 prompt: format!("What is the central topic of this chapter?"),
+                topic: Some(chapter_title.to_string()),
                 choices: vec![
                     chapter_title.to_string(),
                     "An unrelated elective topic".into(),
@@ -101,6 +118,7 @@ impl StudyGenerator for MockStudyGenerator {
             },
             QuizQuestion {
                 prompt: "According to the summary, what should you do after studying?".into(),
+                topic: Some("Méthode de révision".into()),
                 choices: vec![
                     "Skip practice and move on".into(),
                     "Attempt the exercises, then take the quiz".into(),
@@ -112,6 +130,7 @@ impl StudyGenerator for MockStudyGenerator {
             },
             QuizQuestion {
                 prompt: "How were common mistakes handled in this lesson?".into(),
+                topic: Some("Erreurs fréquentes".into()),
                 choices: vec![
                     "They were ignored".into(),
                     "They were highlighted and discussed".into(),
@@ -125,6 +144,24 @@ impl StudyGenerator for MockStudyGenerator {
 
         Ok(GeneratedContent {
             summary_markdown,
+            key_points: vec![
+                format!("Comprendre le concept central de {chapter_title}."),
+                "Savoir refaire l'exemple principal sans les notes.".into(),
+                "Identifier les erreurs fréquentes et les éviter.".into(),
+            ],
+            takeaway: Some(format!(
+                "La maîtrise de {chapter_title} vient de la pratique active, pas seulement de la relecture."
+            )),
+            flashcards: vec![
+                Flashcard {
+                    front: format!("Quel est l'objectif de {chapter_title} ?"),
+                    back: "Expliquer le concept central et l'appliquer à un exemple.".into(),
+                },
+                Flashcard {
+                    front: "Quelle est la meilleure étape suivante ?".into(),
+                    back: "Refaire l'exemple, puis répondre au quiz sans consulter les notes.".into(),
+                },
+            ],
             exercises,
             quiz,
         })
@@ -145,9 +182,11 @@ mod tests {
         let transcript = stt.transcribe(&audio).await.unwrap();
 
         assert!(!transcript.text.is_empty());
+        assert!(!transcript.segments[0].words.is_empty());
         assert_eq!(transcript.language, Some("en".to_string()));
         assert!(transcript.text.contains("Point 1:"));
         assert!(transcript.text.contains("Point 5:"));
+        assert_eq!(transcript.segments.len(), 5);
     }
 
     #[tokio::test]
@@ -180,6 +219,7 @@ mod tests {
         let transcript = Transcript {
             text: "This is a test transcript with several words in it.".to_string(),
             language: Some("en".to_string()),
+            segments: vec![],
         };
 
         let content = gen.generate("Linear Algebra", &transcript).await.unwrap();
@@ -207,12 +247,16 @@ mod tests {
         let transcript = Transcript {
             text: "Some content here.".to_string(),
             language: None,
+            segments: vec![],
         };
 
         let content = gen.generate("Test Chapter", &transcript).await.unwrap();
 
         for q in &content.quiz {
-            assert!(q.choices.len() >= 2, "each question needs at least 2 choices");
+            assert!(
+                q.choices.len() >= 2,
+                "each question needs at least 2 choices"
+            );
             assert!(
                 (q.correct_index as usize) < q.choices.len(),
                 "correct_index must be within choices"
@@ -226,13 +270,21 @@ mod tests {
         let transcript = Transcript {
             text: "Words.".to_string(),
             language: None,
+            segments: vec![],
         };
 
         let content = gen.generate("Chapter", &transcript).await.unwrap();
 
         // At least some exercises should have guidance
-        let with_guidance = content.exercises.iter().filter(|e| e.guidance.is_some()).count();
-        assert!(with_guidance > 0, "at least one exercise should have guidance");
+        let with_guidance = content
+            .exercises
+            .iter()
+            .filter(|e| e.guidance.is_some())
+            .count();
+        assert!(
+            with_guidance > 0,
+            "at least one exercise should have guidance"
+        );
     }
 }
 

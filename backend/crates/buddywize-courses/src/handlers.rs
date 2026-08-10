@@ -21,15 +21,37 @@ const PAGE_LIMIT: i64 = 500;
 pub struct AgendaUpsert {
     pub client_uuid: Uuid,
     pub title: String,
+    #[serde(default = "default_agenda_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub subject: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
     #[serde(default)]
     pub starts_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub ends_at: Option<DateTime<Utc>>,
+    #[serde(default = "default_recurrence")]
+    pub recurrence: String,
+    #[serde(default)]
+    pub recurrence_until: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub reminder_minutes: Option<i32>,
+    #[serde(default)]
+    pub chapter_client_uuid: Option<Uuid>,
     /// Set true to soft-delete (tombstone) the item.
     #[serde(default)]
     pub deleted: bool,
+}
+
+fn default_agenda_kind() -> String {
+    "course".into()
+}
+
+fn default_recurrence() -> String {
+    "none".into()
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -75,7 +97,11 @@ pub struct DeltaResponse<T: Serialize> {
 }
 
 fn cursor_of(sync_versions: &[i64], since: Option<i64>) -> (i64, bool) {
-    let max = sync_versions.iter().copied().max().unwrap_or(since.unwrap_or(0));
+    let max = sync_versions
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(since.unwrap_or(0));
     (max, sync_versions.len() as i64 >= PAGE_LIMIT)
 }
 
@@ -107,7 +133,11 @@ pub async fn list_agenda(
 
     let versions: Vec<i64> = rows.iter().map(|r| r.sync_version).collect();
     let (cursor, has_more) = cursor_of(&versions, q.since);
-    Ok(Json(DeltaResponse { items: rows, cursor, has_more }))
+    Ok(Json(DeltaResponse {
+        items: rows,
+        cursor,
+        has_more,
+    }))
 }
 
 /// Idempotent create/update of an agenda item keyed by client UUID.
@@ -125,14 +155,37 @@ pub async fn upsert_agenda(
     if body.title.trim().is_empty() {
         return Err(ApiError::BadRequest("title is required".into()));
     }
+    if !matches!(body.kind.as_str(), "course" | "revision" | "reminder") {
+        return Err(ApiError::BadRequest("invalid agenda kind".into()));
+    }
+    if !matches!(body.recurrence.as_str(), "none" | "weekly") {
+        return Err(ApiError::BadRequest("invalid recurrence".into()));
+    }
+    if body.reminder_minutes.is_some_and(|minutes| minutes < 0) {
+        return Err(ApiError::BadRequest("invalid reminder".into()));
+    }
     let row: AgendaRow = sqlx::query_as(
-        "INSERT INTO agenda_items (user_id, client_uuid, title, notes, starts_at, ends_at, deleted_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 THEN now() ELSE NULL END)
+        "INSERT INTO agenda_items (
+            user_id, client_uuid, title, kind, subject, notes, location,
+            starts_at, ends_at, recurrence, recurrence_until,
+            reminder_minutes, chapter_client_uuid, deleted_at
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            CASE WHEN $14 THEN now() ELSE NULL END
+         )
          ON CONFLICT (client_uuid) DO UPDATE SET
             title = EXCLUDED.title,
+            kind = EXCLUDED.kind,
+            subject = EXCLUDED.subject,
             notes = EXCLUDED.notes,
+            location = EXCLUDED.location,
             starts_at = EXCLUDED.starts_at,
             ends_at = EXCLUDED.ends_at,
+            recurrence = EXCLUDED.recurrence,
+            recurrence_until = EXCLUDED.recurrence_until,
+            reminder_minutes = EXCLUDED.reminder_minutes,
+            chapter_client_uuid = EXCLUDED.chapter_client_uuid,
             deleted_at = EXCLUDED.deleted_at,
             updated_at = now(),
             sync_version = nextval('sync_version_seq')
@@ -142,9 +195,16 @@ pub async fn upsert_agenda(
     .bind(user.sub)
     .bind(body.client_uuid)
     .bind(&body.title)
+    .bind(&body.kind)
+    .bind(&body.subject)
     .bind(&body.notes)
+    .bind(&body.location)
     .bind(body.starts_at)
     .bind(body.ends_at)
+    .bind(&body.recurrence)
+    .bind(body.recurrence_until)
+    .bind(body.reminder_minutes)
+    .bind(body.chapter_client_uuid)
     .bind(body.deleted)
     .fetch_one(&state.db)
     .await?;
@@ -203,7 +263,11 @@ pub async fn list_courses(
 
     let versions: Vec<i64> = rows.iter().map(|r| r.sync_version).collect();
     let (cursor, has_more) = cursor_of(&versions, q.since);
-    Ok(Json(DeltaResponse { items: rows, cursor, has_more }))
+    Ok(Json(DeltaResponse {
+        items: rows,
+        cursor,
+        has_more,
+    }))
 }
 
 /// Idempotent create/update of a course.
@@ -296,7 +360,11 @@ pub async fn list_lessons(
 
     let versions: Vec<i64> = rows.iter().map(|r| r.sync_version).collect();
     let (cursor, has_more) = cursor_of(&versions, q.since);
-    Ok(Json(DeltaResponse { items: rows, cursor, has_more }))
+    Ok(Json(DeltaResponse {
+        items: rows,
+        cursor,
+        has_more,
+    }))
 }
 
 /// Idempotent create/update of a lesson; parent referenced by client UUID.
@@ -314,14 +382,13 @@ pub async fn upsert_lesson(
     if body.title.trim().is_empty() {
         return Err(ApiError::BadRequest("title is required".into()));
     }
-    let course_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM courses WHERE client_uuid = $1 AND user_id = $2",
-    )
-    .bind(body.course_client_uuid)
-    .bind(user.sub)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::BadRequest("parent course not found; push it first".into()))?;
+    let course_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM courses WHERE client_uuid = $1 AND user_id = $2")
+            .bind(body.course_client_uuid)
+            .bind(user.sub)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::BadRequest("parent course not found; push it first".into()))?;
 
     let row: LessonRow = sqlx::query_as(
         "INSERT INTO lessons (course_id, client_uuid, title, position, deleted_at)
@@ -406,7 +473,11 @@ pub async fn list_chapters(
 
     let versions: Vec<i64> = rows.iter().map(|r| r.sync_version).collect();
     let (cursor, has_more) = cursor_of(&versions, q.since);
-    Ok(Json(DeltaResponse { items: rows, cursor, has_more }))
+    Ok(Json(DeltaResponse {
+        items: rows,
+        cursor,
+        has_more,
+    }))
 }
 
 /// Idempotent create/update of a chapter; parent referenced by client UUID.
@@ -509,9 +580,11 @@ pub async fn parse_agenda_image(
     mut multipart: axum::extract::Multipart,
 ) -> ApiResult<Json<Vec<buddywize_ai::providers::AgendaItemDraft>>> {
     let mut bytes: Option<Vec<u8>> = None;
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        ApiError::BadRequest(format!("invalid multipart payload: {e}"))
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("invalid multipart payload: {e}")))?
+    {
         if field.name() == Some("image") {
             bytes = Some(
                 field
@@ -560,11 +633,9 @@ pub async fn import_ical(
     Json(body): Json<IcalImportRequest>,
 ) -> ApiResult<Json<Vec<buddywize_ai::providers::AgendaItemDraft>>> {
     let text = match (body.url, body.text) {
-        (Some(url), None) => {
-            fetch_url(&url).await.map_err(|e| {
-                ApiError::BadRequest(format!("failed to fetch iCal URL '{url}': {e}"))
-            })?
-        }
+        (Some(url), None) => fetch_url(&url)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("failed to fetch iCal URL '{url}': {e}")))?,
         (None, Some(text)) => text,
         (Some(_), Some(_)) => {
             return Err(ApiError::BadRequest(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_theme.dart';
 import 'auth_controller.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
@@ -49,7 +50,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.school, size: 56, color: Colors.indigo),
+                  const Icon(Icons.school, size: 56, color: AppColors.primary),
                   const SizedBox(height: 12),
                   Text(
                     _isRegister ? 'Create your account' : 'Welcome back',
@@ -87,22 +88,29 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: AppColors.error),
+                    ),
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: _busy ? null : _submit,
                     child: _busy
                         ? const SizedBox(
-                            height: 18, width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : Text(_isRegister ? 'Start free trial' : 'Log in'),
                   ),
                   TextButton(
                     onPressed: () => setState(() => _isRegister = !_isRegister),
-                    child: Text(_isRegister
-                        ? 'Already have an account? Log in'
-                        : 'New here? Create an account'),
+                    child: Text(
+                      _isRegister
+                          ? 'Already have an account? Log in'
+                          : 'New here? Create an account',
+                    ),
                   ),
                 ],
               ),

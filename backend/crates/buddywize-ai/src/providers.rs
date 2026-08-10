@@ -3,6 +3,73 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+/// A single spoken word aligned with the recording timeline.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TranscriptWord {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+}
+
+/// A sentence-sized transcript cue aligned with the recording timeline.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TranscriptSegment {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+    /// Word-level cues used for karaoke-style playback. Older providers may
+    /// omit these; clients can fall back to the enclosing segment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<TranscriptWord>,
+}
+
+/// Produce a deterministic word progression when a provider only returns a
+/// sentence-level timestamp. Durations are weighted by character count so
+/// longer words remain highlighted for slightly longer.
+pub fn estimate_word_timings(text: &str, start_ms: i64, end_ms: i64) -> Vec<TranscriptWord> {
+    if end_ms <= start_ms {
+        return Vec::new();
+    }
+    let words = text
+        .split_whitespace()
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    if words.is_empty() {
+        return Vec::new();
+    }
+
+    let weights = words
+        .iter()
+        .map(|word| word.chars().count().max(1) as i64)
+        .collect::<Vec<_>>();
+    let word_count = words.len();
+    let total_weight = weights.iter().sum::<i64>().max(1);
+    let duration = end_ms - start_ms;
+    let mut elapsed_weight = 0_i64;
+
+    words
+        .into_iter()
+        .zip(weights)
+        .enumerate()
+        .map(|(index, (word, weight))| {
+            let word_start =
+                (start_ms + duration * elapsed_weight / total_weight).clamp(start_ms, end_ms - 1);
+            elapsed_weight += weight;
+            let word_end = if index + 1 == word_count {
+                end_ms
+            } else {
+                start_ms + duration * elapsed_weight / total_weight
+            };
+            TranscriptWord {
+                start_ms: word_start,
+                end_ms: word_end.max(word_start + 1).min(end_ms),
+                text: word.to_string(),
+            }
+        })
+        .collect()
+}
+
 /// Result of speech-to-text over a lesson recording.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transcript {
@@ -10,6 +77,9 @@ pub struct Transcript {
     /// Detected language (BCP-47) if the provider reports it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Sentence-sized cues used by the mobile player for synchronized text.
+    #[serde(default)]
+    pub segments: Vec<TranscriptSegment>,
 }
 
 /// A single practice exercise.
@@ -28,6 +98,9 @@ pub struct Exercise {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuizQuestion {
     pub prompt: String,
+    /// Concept used to group the result breakdown in the mobile app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
     pub choices: Vec<String>,
     /// Index into `choices` of the correct answer.
     pub correct_index: i32,
@@ -35,10 +108,23 @@ pub struct QuizQuestion {
     pub explanation: Option<String>,
 }
 
+/// A short active-recall card displayed next to the generated summary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Flashcard {
+    pub front: String,
+    pub back: String,
+}
+
 /// Everything the study-material stage produces for a chapter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedContent {
     pub summary_markdown: String,
+    #[serde(default)]
+    pub key_points: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub takeaway: Option<String>,
+    #[serde(default)]
+    pub flashcards: Vec<Flashcard>,
     pub exercises: Vec<Exercise>,
     pub quiz: Vec<QuizQuestion>,
 }

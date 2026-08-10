@@ -73,16 +73,29 @@ def main() -> int:
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
         condition_on_previous_text=False,
+        word_timestamps=True,
     )
 
     segments = []
     text_parts = []
     for seg in segments_iter:
+        words = []
+        for word in seg.words or []:
+            text = word.word.strip()
+            if not text or word.end <= word.start:
+                continue
+            words.append({
+                "start": float(word.start),
+                "end": float(word.end),
+                "text": text,
+                "probability": float(word.probability),
+            })
         segments.append({
             "start": float(seg.start),
             "end": float(seg.end),
             "text": seg.text,
             "no_speech_prob": float(seg.no_speech_prob),
+            "words": words,
         })
         text_parts.append(seg.text)
 

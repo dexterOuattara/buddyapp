@@ -5,10 +5,9 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../api/friendly_error.dart';
+import '../../core/app_theme.dart';
 import '../../providers.dart';
 import 'agenda_review_screen.dart';
 
@@ -96,7 +95,11 @@ class _AgendaScanScreenState extends ConsumerState<AgendaScanScreen> {
       if (!mounted) return;
       if (drafts.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("We couldn't read any agenda items. Try again or enter manually.")),
+          const SnackBar(
+            content: Text(
+              "We couldn't read any agenda items. Try again or enter manually.",
+            ),
+          ),
         );
         return;
       }
@@ -146,7 +149,7 @@ class _AgendaScanScreenState extends ConsumerState<AgendaScanScreen> {
         child: Center(
           child: Text(
             _initError!,
-            style: const TextStyle(color: Colors.red),
+            style: const TextStyle(color: AppColors.error),
             textAlign: TextAlign.center,
           ),
         ),
@@ -158,11 +161,13 @@ class _AgendaScanScreenState extends ConsumerState<AgendaScanScreen> {
       children: [
         CameraPreview(controller),
         Positioned(
-          left: 0, right: 0, bottom: 32,
+          left: 0,
+          right: 0,
+          bottom: 32,
           child: Center(
             child: FloatingActionButton.large(
               onPressed: _busy ? null : _captureAndParse,
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
               child: _busy
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Icon(Icons.camera_alt, size: 32),
