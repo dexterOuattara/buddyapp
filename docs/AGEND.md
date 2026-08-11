@@ -237,7 +237,8 @@ split into separate binaries later without rewriting.
   `recordings`, `transcripts`, `summaries`, `exercises`, `quizzes`,
   plus a cursor table for delta sync.
 - **Audio capture**: the `record` package, AAC-LC encoder, m4a
-  container, 128 kbps stereo, 44.1 kHz.
+  container, explicitly configured at 48 kbps mono, 16 kHz. Do not
+  rely on the package defaults (128 kbps stereo, 44.1 kHz).
 - **HTTP**: the in-house `api_client.dart` handles JWT refresh on 401.
 - **Sync engine**: `lib/sync/sync_engine.dart` — leased, adaptive,
   push-local then pull-remote, with `InsertMode.insertOrReplace` for
@@ -563,7 +564,7 @@ of uploading duplicate audio.
 
 ---
 
-## 10. ⛔ 12 ANTI-REGRESSION LAWS
+## 10. ⛔ 13 ANTI-REGRESSION LAWS
 
 These are the bugs that have already burned us, plus the structural
 patterns that keep them from happening again. Treat each as a failing
@@ -623,7 +624,7 @@ Source: `core/src/storage.rs:281-294` (`R2Storage::finish_upload`).
 Commit `f01f844`.
 
 Memory budget: per in-flight upload ≈ file size. A 1 h recording at
-128 kbps AAC is ~57 MiB. A 4 h recording is ~220 MiB. Both fit.
+48 kbps AAC is ~20.6 MiB. A 4 h recording is ~82.4 MiB. Both fit.
 
 ---
 
@@ -778,6 +779,26 @@ before listening.
 
 Source: `core/src/storage.rs:bind_database_namespace` and
 `api/src/main.rs` immediately after `storage::from_env`.
+
+---
+
+### Law 13 — Speech capture is explicit AAC-LC 48 kbps mono
+
+Every mobile recording uses the m4a container with AAC-LC at 48,000
+bits/second, 16,000 samples/second, and one channel. All four values
+must remain explicit in `speechRecordingConfig`; never fall back to the
+`record` package defaults of 128 kbps, 44.1 kHz stereo.
+
+This profile preserves the existing upload and playback contract while
+reducing audio bytes, mobile upload time, R2 usage, and the API's
+full-object memory pressure by approximately 62.5%. Changing the codec,
+container, bitrate, sample rate, or channel count requires a real-device
+recording test and an amendment to this law.
+
+Required regression test:
+`mobile/test/features/recording/recorder_service_config_test.dart`.
+
+Source: `mobile/lib/features/recording/recorder_service.dart`.
 
 ---
 

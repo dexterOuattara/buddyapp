@@ -10,6 +10,17 @@ import 'package:uuid/uuid.dart';
 import '../../db/app_database.dart';
 import '../../providers.dart';
 
+/// Speech-first capture profile shared by every BuddyWize recording.
+///
+/// Keep every value explicit: the `record` package defaults to 128 kbps,
+/// 44.1 kHz stereo, which materially increases mobile data and API memory use.
+const speechRecordingConfig = RecordConfig(
+  encoder: AudioEncoder.aacLc,
+  bitRate: 48000,
+  sampleRate: 16000,
+  numChannels: 1,
+);
+
 /// Captures audio and registers the recording locally so it can be uploaded
 /// opportunistically by the sync engine.
 class RecorderService {
@@ -38,10 +49,7 @@ class RecorderService {
     final clientUuid = _uuid.v4();
     final path = p.join(recordingsDir.path, '$clientUuid.m4a');
 
-    await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc),
-      path: path,
-    );
+    await _recorder.start(speechRecordingConfig, path: path);
 
     _activePath = path;
     _activeChapterUuid = chapterClientUuid;
