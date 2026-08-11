@@ -15,6 +15,7 @@ class ConnectivityService {
 
   final _controller = StreamController<bool>.broadcast();
   late final StreamSubscription<List<ConnectivityResult>> _sub;
+  bool? _lastEmittedState;
 
   Stream<bool> get onConnectivityChanged => _controller.stream;
 
@@ -26,10 +27,13 @@ class ConnectivityService {
     final hasSystemNetwork = results.any(
       (result) => result != ConnectivityResult.none,
     );
-    final online =
-        hasSystemNetwork ||
-        (usesLoopbackApi(Config.apiBaseUrl) && await _probeConfiguredApi());
-    if (!_controller.isClosed) _controller.add(online);
+    final canReachApi =
+        (hasSystemNetwork || usesLoopbackApi(Config.apiBaseUrl)) &&
+        await _probeConfiguredApi();
+    if (!_controller.isClosed && canReachApi != _lastEmittedState) {
+      _lastEmittedState = canReachApi;
+      _controller.add(canReachApi);
+    }
   }
 
   /// Connectivity Plus reports network interfaces, not endpoint
@@ -41,8 +45,10 @@ class ConnectivityService {
     Future<bool> Function()? apiProbe,
   }) async {
     final results = await (networkCheck ?? Connectivity().checkConnectivity)();
-    if (results.any((result) => result != ConnectivityResult.none)) return true;
-    if (!usesLoopbackApi(Config.apiBaseUrl)) return false;
+    final hasSystemNetwork = results.any(
+      (result) => result != ConnectivityResult.none,
+    );
+    if (!hasSystemNetwork && !usesLoopbackApi(Config.apiBaseUrl)) return false;
     return (apiProbe ?? _probeConfiguredApi)();
   }
 

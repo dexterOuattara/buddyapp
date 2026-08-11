@@ -24,7 +24,8 @@ pub async fn require_auth(
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or(ApiError::Unauthorized)?;
 
-    let claims = crate::jwt::validate(&state.jwt.secret, token).map_err(|_| ApiError::Unauthorized)?;
+    let claims =
+        crate::jwt::validate(&state.jwt.secret, token).map_err(|_| ApiError::Unauthorized)?;
     req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
 }

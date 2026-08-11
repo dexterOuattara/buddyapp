@@ -74,6 +74,11 @@ void main() {
             durationSecs: const Value(2304),
             status: const Value('processing'),
             uploadedBytes: const Value(640),
+            pipelineStage: const Value('transcribing'),
+            progressPercent: const Value(58),
+            stageCurrent: const Value(1),
+            stageTotal: const Value(3),
+            statusMessage: const Value('Transcription audio 1/3'),
             createdAt: Value(DateTime(2026, 8, 10, 10, 30)),
           ),
         );

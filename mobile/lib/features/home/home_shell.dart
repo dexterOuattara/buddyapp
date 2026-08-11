@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
+import '../../db/app_database.dart';
 import '../../providers.dart';
 import '../../sync/sync_engine.dart';
 import '../account/account_screen.dart';
@@ -77,6 +78,16 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Widget build(BuildContext context) {
     ref.watch(agendaReminderCoordinatorProvider);
     final phase = ref.watch(syncPhaseProvider).value ?? SyncPhase.idle;
+    final activeRecordings = (ref.watch(recordingsStreamProvider).value ?? [])
+        .where(
+          (recording) => const {
+            'pending_sync',
+            'uploading',
+            'synced',
+            'processing',
+          }.contains(recording.status),
+        )
+        .toList(growable: false);
 
     return Scaffold(
       appBar: _tabCanPop[_index]
@@ -108,34 +119,50 @@ class _HomeShellState extends ConsumerState<HomeShell>
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _selectDestination,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Accueil',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            child: activeRecordings.isEmpty
+                ? const SizedBox.shrink(key: ValueKey('no-processing'))
+                : _ProcessingActivityStrip(
+                    key: const ValueKey('processing'),
+                    recordings: activeRecordings,
+                    onSync: () =>
+                        ref.read(syncEngineProvider).sync(force: true),
+                  ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Agenda',
-          ),
-          NavigationDestination(
-            icon: _RecordNavIcon(),
-            selectedIcon: _RecordNavIcon(selected: true),
-            label: 'Enregistrer',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book_rounded),
-            label: 'Cours',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'Profil',
+          NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: _selectDestination,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home_rounded),
+                label: 'Accueil',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.calendar_month_outlined),
+                selectedIcon: Icon(Icons.calendar_month_rounded),
+                label: 'Agenda',
+              ),
+              NavigationDestination(
+                icon: _RecordNavIcon(),
+                selectedIcon: _RecordNavIcon(selected: true),
+                label: 'Enregistrer',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.menu_book_outlined),
+                selectedIcon: Icon(Icons.menu_book_rounded),
+                label: 'Cours',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline_rounded),
+                selectedIcon: Icon(Icons.person_rounded),
+                label: 'Profil',
+              ),
+            ],
           ),
         ],
       ),
@@ -148,6 +175,149 @@ class _HomeShellState extends ConsumerState<HomeShell>
       return;
     }
     setState(() => _index = destination);
+  }
+}
+
+class _ProcessingActivityStrip extends StatelessWidget {
+  const _ProcessingActivityStrip({
+    super.key,
+    required this.recordings,
+    required this.onSync,
+  });
+
+  final List<Recording> recordings;
+  final VoidCallback onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = recordings.last;
+    final progress = current.progressPercent.clamp(0, 100);
+    final message =
+        current.statusMessage ??
+        (current.status == 'pending_sync'
+            ? 'En attente de connexion'
+            : 'Traitement du cours…');
+    final waiting =
+        current.status == 'pending_sync' ||
+        const {'waiting_network', 'retry_wait'}.contains(current.pipelineStage);
+    final color = waiting ? AppColors.warning : AppColors.secondary;
+    return Material(
+      color: color.withValues(alpha: 0.09),
+      child: InkWell(
+        onTap: () => _showActivityCenter(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 7, 8, 7),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  value: progress / 100,
+                  strokeWidth: 3,
+                  color: color,
+                  backgroundColor: color.withValues(alpha: 0.16),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      recordings.length == 1
+                          ? message
+                          : '${recordings.length} cours en traitement',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    LinearProgressIndicator(
+                      value: progress / 100,
+                      minHeight: 3,
+                      borderRadius: BorderRadius.circular(8),
+                      color: color,
+                      backgroundColor: color.withValues(alpha: 0.13),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$progress %',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Synchroniser maintenant',
+                onPressed: onSync,
+                icon: Icon(Icons.sync_rounded, color: color, size: 20),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showActivityCenter(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Activité des cours',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 10),
+              for (final recording in recordings)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: CircularProgressIndicator(
+                      value: recording.progressPercent.clamp(0, 100) / 100,
+                      strokeWidth: 4,
+                      color: AppColors.secondary,
+                      backgroundColor: AppColors.outline,
+                    ),
+                  ),
+                  title: Text(
+                    recording.fileName ?? 'Enregistrement',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    recording.statusMessage ?? 'Traitement en cours…',
+                  ),
+                  trailing: Text(
+                    '${recording.progressPercent.clamp(0, 100)} %',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

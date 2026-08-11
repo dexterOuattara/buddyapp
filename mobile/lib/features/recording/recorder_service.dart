@@ -10,6 +10,17 @@ import 'package:uuid/uuid.dart';
 import '../../db/app_database.dart';
 import '../../providers.dart';
 
+/// Speech-first capture profile shared by every BuddyWize recording.
+///
+/// Keep every value explicit: the `record` package defaults to 128 kbps,
+/// 44.1 kHz stereo, which materially increases mobile data and API memory use.
+const speechRecordingConfig = RecordConfig(
+  encoder: AudioEncoder.aacLc,
+  bitRate: 48000,
+  sampleRate: 16000,
+  numChannels: 1,
+);
+
 /// Captures audio and registers the recording locally so it can be uploaded
 /// opportunistically by the sync engine.
 class RecorderService {
@@ -38,34 +49,42 @@ class RecorderService {
     final clientUuid = _uuid.v4();
     final path = p.join(recordingsDir.path, '$clientUuid.m4a');
 
-    await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc),
-      path: path,
-    );
+    await _recorder.start(speechRecordingConfig, path: path);
 
     _activePath = path;
     _activeChapterUuid = chapterClientUuid;
     _startedAt = DateTime.now();
   }
 
-  /// Stop and persist a local-only recording row; sync uploads it later.
-  Future<void> stop() async {
-    if (!isRecording) return;
+  /// Stop and atomically persist a recording before any upload starts.
+  Future<Recording?> stop() async {
+    if (!isRecording) return null;
     final path = await _recorder.stop();
     final duration = DateTime.now().difference(_startedAt!).inSeconds;
 
-    await _db.into(_db.recordings).insert(RecordingsCompanion.insert(
-      clientUuid: _uuid.v4(),
-      chapterClientUuid: _activeChapterUuid!,
-      localPath: path ?? _activePath!,
-      fileName: Value(p.basename(path ?? _activePath!)),
-      durationSecs: Value(duration),
-      status: const Value('pending_sync'),
-    ));
-
-    _activePath = null;
-    _activeChapterUuid = null;
-    _startedAt = null;
+    try {
+      return await _db
+          .into(_db.recordings)
+          .insertReturning(
+            RecordingsCompanion.insert(
+              clientUuid: _uuid.v4(),
+              chapterClientUuid: _activeChapterUuid!,
+              localPath: path ?? _activePath!,
+              fileName: Value(p.basename(path ?? _activePath!)),
+              durationSecs: Value(duration),
+              status: const Value('pending_sync'),
+              pipelineStage: const Value('saved_local'),
+              progressPercent: const Value(1),
+              statusMessage: const Value('Sauvegardé sur cet appareil'),
+              retryable: const Value(true),
+              lastProgressAt: Value(DateTime.now()),
+            ),
+          );
+    } finally {
+      _activePath = null;
+      _activeChapterUuid = null;
+      _startedAt = null;
+    }
   }
 
   Future<void> dispose() => _recorder.dispose();

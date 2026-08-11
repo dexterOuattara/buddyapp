@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{jwt, password, middleware::AuthUser, AuthState};
+use crate::{jwt, middleware::AuthUser, password, AuthState};
 
 // ------------------------------------------------------------------------ DTO
 
@@ -78,14 +78,12 @@ async fn issue_tokens(state: &AuthState, user: &UserRow) -> ApiResult<AuthRespon
 
     let refresh_token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
     let expires_at = Utc::now() + Duration::days(state.jwt.refresh_ttl_days);
-    sqlx::query(
-        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    )
-    .bind(user.id)
-    .bind(sha256_hex(&refresh_token))
-    .bind(expires_at)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)")
+        .bind(user.id)
+        .bind(sha256_hex(&refresh_token))
+        .bind(expires_at)
+        .execute(&state.db)
+        .await?;
 
     Ok(AuthResponse {
         access_token,
@@ -159,11 +157,10 @@ pub async fn login(
     Json(body): Json<CredentialsRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     let email = body.email.trim().to_lowercase();
-    let user: Option<UserRow> =
-        sqlx::query_as("SELECT * FROM users WHERE email = $1")
-            .bind(&email)
-            .fetch_optional(&state.db)
-            .await?;
+    let user: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE email = $1")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await?;
 
     let user = match user {
         Some(u) if password::verify(&body.password, &u.password_hash) => u,
@@ -249,11 +246,7 @@ pub async fn me(
 }
 
 /// Idempotently seed an admin account (used at boot for dev/demo access).
-pub async fn seed_admin(
-    db: &sqlx::PgPool,
-    email: &str,
-    password: &str,
-) -> ApiResult<()> {
+pub async fn seed_admin(db: &sqlx::PgPool, email: &str, password: &str) -> ApiResult<()> {
     let email = email.trim().to_lowercase();
     let exists: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE email = $1")
         .bind(&email)

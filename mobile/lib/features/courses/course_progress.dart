@@ -6,12 +6,37 @@ import '../../db/app_database.dart';
 
 enum ChapterLearningStatus { notStarted, inProgress, review, completed }
 
+class ChapterMaterialVersion {
+  const ChapterMaterialVersion({
+    required this.key,
+    required this.summary,
+    required this.exercise,
+    required this.quiz,
+    required this.recording,
+  });
+
+  final String key;
+  final Summary? summary;
+  final Exercise? exercise;
+  final Quizze? quiz;
+  final Recording? recording;
+
+  int get syncVersion => [
+    summary?.syncVersion ?? 0,
+    exercise?.syncVersion ?? 0,
+    quiz?.syncVersion ?? 0,
+  ].reduce((current, next) => current > next ? current : next);
+
+  int get sessionCount => _materialSessionCount(summary?.structuredJson);
+}
+
 class ChapterProgress {
   const ChapterProgress({
     required this.lesson,
     required this.chapter,
     required this.recordings,
     required this.transcriptsByRecordingClientUuid,
+    required this.materialVersions,
     required this.summary,
     required this.exercise,
     required this.quiz,
@@ -27,6 +52,7 @@ class ChapterProgress {
   final Chapter chapter;
   final List<Recording> recordings;
   final Map<String, Transcript> transcriptsByRecordingClientUuid;
+  final List<ChapterMaterialVersion> materialVersions;
   final Summary? summary;
   final Exercise? exercise;
   final Quizze? quiz;
@@ -38,6 +64,9 @@ class ChapterProgress {
   final int flashcardCount;
 
   bool get hasMaterial => summary != null || exercise != null || quiz != null;
+  int get materialVersionCount => materialVersions.length;
+  int get materialSessionCount =>
+      materialVersions.firstOrNull?.sessionCount ?? 0;
 
   Transcript? transcriptFor(Recording recording) =>
       transcriptsByRecordingClientUuid[recording.clientUuid];
@@ -164,18 +193,22 @@ class CourseCatalogRepository {
           final chapterRecordings = recordings
               .where((r) => r.chapterClientUuid == chapter.clientUuid)
               .toList();
-          final summary = _latest(
-            summaries.where((s) => s.chapterClientUuid == chapter.clientUuid),
-            (s) => s.syncVersion,
+          final materialVersions = _buildMaterialVersions(
+            chapterRecordings,
+            summaries.where(
+              (summary) => summary.chapterClientUuid == chapter.clientUuid,
+            ),
+            exercises.where(
+              (exercise) => exercise.chapterClientUuid == chapter.clientUuid,
+            ),
+            quizzes.where(
+              (quiz) => quiz.chapterClientUuid == chapter.clientUuid,
+            ),
           );
-          final exercise = _latest(
-            exercises.where((e) => e.chapterClientUuid == chapter.clientUuid),
-            (e) => e.syncVersion,
-          );
-          final quiz = _latest(
-            quizzes.where((q) => q.chapterClientUuid == chapter.clientUuid),
-            (q) => q.syncVersion,
-          );
+          final currentMaterial = materialVersions.firstOrNull;
+          final summary = currentMaterial?.summary;
+          final exercise = currentMaterial?.exercise;
+          final quiz = currentMaterial?.quiz;
           final chapterAttempts = attempts
               .where((a) => a.chapterClientUuid == chapter.clientUuid)
               .toList();
@@ -205,6 +238,7 @@ class CourseCatalogRepository {
               recordings: chapterRecordings,
               transcriptsByRecordingClientUuid:
                   transcriptsByRecordingClientUuid,
+              materialVersions: materialVersions,
               summary: summary,
               exercise: exercise,
               quiz: quiz,
@@ -244,17 +278,96 @@ class CourseCatalogRepository {
   }
 }
 
-T? _latest<T>(Iterable<T> rows, int Function(T) version) {
-  T? latest;
-  var latestVersion = -1;
-  for (final row in rows) {
-    final rowVersion = version(row);
-    if (latest == null || rowVersion >= latestVersion) {
-      latest = row;
-      latestVersion = rowVersion;
+List<ChapterMaterialVersion> _buildMaterialVersions(
+  List<Recording> recordings,
+  Iterable<Summary> summaries,
+  Iterable<Exercise> exercises,
+  Iterable<Quizze> quizzes,
+) {
+  final builders = <String, _MaterialVersionBuilder>{};
+
+  for (final summary in summaries) {
+    final key = _materialVersionKey(
+      generationId: summary.generationId,
+      recordingServerId: summary.recordingServerId,
+    );
+    final builder = builders.putIfAbsent(
+      key,
+      () => _MaterialVersionBuilder(key),
+    );
+    if (builder.summary == null ||
+        summary.syncVersion >= builder.summary!.syncVersion) {
+      builder.summary = summary;
     }
+    builder.recordingServerId ??= summary.recordingServerId;
   }
-  return latest;
+  for (final exercise in exercises) {
+    final key = _materialVersionKey(
+      generationId: exercise.generationId,
+      recordingServerId: exercise.recordingServerId,
+    );
+    final builder = builders.putIfAbsent(
+      key,
+      () => _MaterialVersionBuilder(key),
+    );
+    if (builder.exercise == null ||
+        exercise.syncVersion >= builder.exercise!.syncVersion) {
+      builder.exercise = exercise;
+    }
+    builder.recordingServerId ??= exercise.recordingServerId;
+  }
+  for (final quiz in quizzes) {
+    final key = _materialVersionKey(
+      generationId: quiz.generationId,
+      recordingServerId: quiz.recordingServerId,
+    );
+    final builder = builders.putIfAbsent(
+      key,
+      () => _MaterialVersionBuilder(key),
+    );
+    if (builder.quiz == null || quiz.syncVersion >= builder.quiz!.syncVersion) {
+      builder.quiz = quiz;
+    }
+    builder.recordingServerId ??= quiz.recordingServerId;
+  }
+
+  final versions = [
+    for (final builder in builders.values)
+      ChapterMaterialVersion(
+        key: builder.key,
+        summary: builder.summary,
+        exercise: builder.exercise,
+        quiz: builder.quiz,
+        recording: recordings
+            .where(
+              (recording) =>
+                  recording.serverRecordingId == builder.recordingServerId,
+            )
+            .firstOrNull,
+      ),
+  ]..sort((a, b) => b.syncVersion.compareTo(a.syncVersion));
+  return versions;
+}
+
+String _materialVersionKey({
+  required String? generationId,
+  required String? recordingServerId,
+}) {
+  if (generationId?.isNotEmpty == true) return 'generation:$generationId';
+  if (recordingServerId?.isNotEmpty == true) {
+    return 'recording:$recordingServerId';
+  }
+  return 'legacy';
+}
+
+class _MaterialVersionBuilder {
+  _MaterialVersionBuilder(this.key);
+
+  final String key;
+  String? recordingServerId;
+  Summary? summary;
+  Exercise? exercise;
+  Quizze? quiz;
 }
 
 int _jsonListLength(String? value) {
@@ -277,4 +390,17 @@ int _flashcardCount(String? value) {
   } catch (_) {
     return 0;
   }
+}
+
+int _materialSessionCount(String? value) {
+  if (value == null) return 1;
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is! Map<String, dynamic>) return 1;
+    final count = decoded['session_count'];
+    if (count is num && count.toInt() > 0) return count.toInt();
+  } catch (_) {
+    // Legacy study packs represent a single source session.
+  }
+  return 1;
 }

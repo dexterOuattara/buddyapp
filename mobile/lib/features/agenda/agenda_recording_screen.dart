@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
 import '../../providers.dart';
+import '../../sync/background_sync.dart';
 import '../recording/recorder_service.dart';
 
 class AgendaRecordingScreen extends ConsumerStatefulWidget {
@@ -57,7 +60,8 @@ class _AgendaRecordingScreenState extends ConsumerState<AgendaRecordingScreen> {
   Future<void> _stop() async {
     if (!_recording) return;
     await ref.read(recorderServiceProvider).stop();
-    Future.microtask(() => ref.read(syncEngineProvider).sync());
+    unawaited(BackgroundSyncScheduler.enqueueWhenOnline());
+    unawaited(ref.read(syncEngineProvider).sync());
     if (!mounted) return;
     setState(() => _recording = false);
     ScaffoldMessenger.of(context).showSnackBar(

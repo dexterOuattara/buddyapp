@@ -81,6 +81,20 @@ class Recordings extends Table {
   TextColumn get status => text().withDefault(const Constant('local_only'))();
   IntColumn get uploadedBytes => integer().withDefault(const Constant(0))();
   TextColumn get serverRecordingId => text().nullable()();
+  TextColumn get pipelineStage =>
+      text().withDefault(const Constant('saved_local'))();
+  IntColumn get progressPercent => integer().withDefault(const Constant(0))();
+  IntColumn get stageCurrent => integer().nullable()();
+  IntColumn get stageTotal => integer().nullable()();
+  TextColumn get statusMessage => text().nullable()();
+  BoolColumn get retryable => boolean().withDefault(const Constant(true))();
+  IntColumn get attemptCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
+  TextColumn get errorCode => text().nullable()();
+  // Nullable locally so SQLite can add the columns to an existing database.
+  // The server always fills them once remote processing begins.
+  DateTimeColumn get stageStartedAt => dateTime().nullable()();
+  DateTimeColumn get lastProgressAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -101,6 +115,7 @@ class Summaries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get serverId => text().nullable()();
   TextColumn get recordingServerId => text().nullable()();
+  TextColumn get generationId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get contentMd => text()();
   TextColumn get structuredJson => text().nullable()();
@@ -113,6 +128,7 @@ class Exercises extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get serverId => text().nullable()();
   TextColumn get recordingServerId => text().nullable()();
+  TextColumn get generationId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get itemsJson => text()();
   TextColumn get status =>
@@ -124,6 +140,7 @@ class Quizzes extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get serverId => text().nullable()();
   TextColumn get recordingServerId => text().nullable()();
+  TextColumn get generationId => text().nullable()();
   TextColumn get chapterClientUuid => text()();
   TextColumn get questionsJson => text()();
   TextColumn get status =>
@@ -175,7 +192,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -208,6 +225,63 @@ class AppDatabase extends _$AppDatabase {
         // Fetch the newly exposed transcript feed even if study content was
         // already synchronized by an older app version.
         await customStatement("DELETE FROM meta WHERE key = 'study'");
+      }
+      if (from < 5) {
+        await m.addColumn(summaries, summaries.generationId);
+        await m.addColumn(exercises, exercises.generationId);
+        await m.addColumn(quizzes, quizzes.generationId);
+        // Reload study packs so their shared generation ids are available for
+        // switching between historical cumulative versions.
+        await customStatement("DELETE FROM meta WHERE key = 'study'");
+      }
+      if (from < 6) {
+        // SQLite can persist earlier ALTER TABLE statements when a later one
+        // fails on some Android versions. Inspect each name so a migration
+        // interrupted halfway remains safely resumable.
+        final tableInfo = await m.database
+            .customSelect("PRAGMA table_info('recordings')")
+            .get();
+        final existingColumns = tableInfo
+            .map((row) => row.read<String>('name'))
+            .toSet();
+        Future<void> addRecordingColumn(
+          String name,
+          GeneratedColumn<Object> column,
+        ) async {
+          if (existingColumns.add(name)) {
+            await m.addColumn(recordings, column);
+          }
+        }
+
+        await addRecordingColumn('pipeline_stage', recordings.pipelineStage);
+        await addRecordingColumn(
+          'progress_percent',
+          recordings.progressPercent,
+        );
+        await addRecordingColumn('stage_current', recordings.stageCurrent);
+        await addRecordingColumn('stage_total', recordings.stageTotal);
+        await addRecordingColumn('status_message', recordings.statusMessage);
+        await addRecordingColumn('retryable', recordings.retryable);
+        await addRecordingColumn('attempt_count', recordings.attemptCount);
+        await addRecordingColumn('next_retry_at', recordings.nextRetryAt);
+        await addRecordingColumn('error_code', recordings.errorCode);
+        await addRecordingColumn('stage_started_at', recordings.stageStartedAt);
+        await addRecordingColumn('last_progress_at', recordings.lastProgressAt);
+        await customStatement(
+          "UPDATE recordings SET "
+          "pipeline_stage = CASE status "
+          "WHEN 'ready' THEN 'ready' "
+          "WHEN 'failed' THEN 'failed' "
+          "WHEN 'processing' THEN 'queued' "
+          "WHEN 'uploading' THEN 'uploading' "
+          "ELSE 'saved_local' END, "
+          "progress_percent = CASE status "
+          "WHEN 'ready' THEN 100 "
+          "WHEN 'processing' THEN 45 "
+          "WHEN 'synced' THEN 40 ELSE 0 END",
+        );
+        // Pull the richer server-side pipeline state for existing recordings.
+        await customStatement("DELETE FROM meta WHERE key = 'recordings'");
       }
     },
   );

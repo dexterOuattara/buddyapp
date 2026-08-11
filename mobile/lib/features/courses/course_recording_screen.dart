@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show Value;
 
 import '../../core/app_theme.dart';
 import '../../db/app_database.dart';
 import '../../providers.dart';
+import '../../sync/background_sync.dart';
 import '../../sync/sync_engine.dart';
 import '../recording/recorder_service.dart';
 import '../recording/recording_player_screen.dart';
@@ -60,19 +61,11 @@ class _CourseRecordingScreenState extends ConsumerState<CourseRecordingScreen> {
       return;
     }
 
-    await recorder.stop();
+    final recording = await recorder.stop();
     _timer?.cancel();
     if (mounted) setState(() => _recording = false);
-    final db = ref.read(databaseProvider);
-    final recording =
-        await (db.select(db.recordings)
-              ..where(
-                (r) => r.chapterClientUuid.equals(widget.chapter.clientUuid),
-              )
-              ..orderBy([(r) => OrderingTerm.desc(r.createdAt)])
-              ..limit(1))
-            .getSingleOrNull();
     if (recording == null || !mounted) return;
+    unawaited(BackgroundSyncScheduler.enqueueWhenOnline());
     unawaited(ref.read(syncEngineProvider).sync());
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -187,6 +180,45 @@ class CourseProcessingScreen extends ConsumerWidget {
   final Chapter chapter;
   final String courseTitle;
 
+  Future<void> _continueOrRetry(
+    BuildContext context,
+    WidgetRef ref,
+    Recording recording,
+  ) async {
+    final recordingId = recording.serverRecordingId;
+    try {
+      if (recording.status == 'failed' && recordingId != null) {
+        await ref.read(apiClientProvider).reprocessRecording(recordingId);
+        await (ref.read(databaseProvider).update(
+          ref.read(databaseProvider).recordings,
+        )..where((row) => row.id.equals(recording.id))).write(
+          RecordingsCompanion(
+            status: const Value('processing'),
+            pipelineStage: const Value('queued'),
+            progressPercent: Value(
+              recording.progressPercent.clamp(40, 100),
+            ),
+            statusMessage: const Value('Traitement ajouté à la file'),
+            retryable: const Value(true),
+            errorCode: const Value(null),
+            nextRetryAt: const Value(null),
+            lastProgressAt: Value(DateTime.now()),
+          ),
+        );
+      }
+      await ref.read(syncEngineProvider).sync(force: true);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Le serveur est indisponible. La reprise automatique reste programmée.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
@@ -209,103 +241,139 @@ class CourseProcessingScreen extends ConsumerWidget {
               final uploadProgress = fileLength == 0
                   ? 0.0
                   : (recording.uploadedBytes / fileLength).clamp(0.0, 1.0);
-              final uploaded = const {
-                'synced',
-                'processing',
-                'ready',
-              }.contains(recording.status);
               final ready = recording.status == 'ready';
               final failed = recording.status == 'failed';
+              final pipeline = _RecordingPipeline(recording);
               return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
                 children: [
                   Center(
-                    child: Container(
-                      width: 86,
-                      height: 86,
-                      decoration: BoxDecoration(
-                        color: ready
-                            ? context.statusColors.successContainer
-                            : AppColors.primary.withValues(alpha: 0.10),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        ready ? Icons.check_rounded : Icons.graphic_eq_rounded,
-                        size: 48,
-                        color: ready
-                            ? context.statusColors.success
-                            : AppColors.primary,
+                    child: SizedBox(
+                      width: 82,
+                      height: 82,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 520),
+                            curve: Curves.easeOutCubic,
+                            tween: Tween(end: pipeline.overallProgress),
+                            builder: (context, value, _) =>
+                                CircularProgressIndicator(
+                                  value: ready ? 1 : value,
+                                  strokeWidth: 6,
+                                  color: failed
+                                      ? AppColors.error
+                                      : ready
+                                      ? context.statusColors.success
+                                      : AppColors.secondary,
+                                  backgroundColor: AppColors.outline,
+                                ),
+                          ),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 240),
+                            child: Icon(
+                              ready
+                                  ? Icons.check_rounded
+                                  : failed
+                                  ? Icons.priority_high_rounded
+                                  : Icons.graphic_eq_rounded,
+                              key: ValueKey(recording.pipelineStage),
+                              size: 39,
+                              color: failed
+                                  ? AppColors.error
+                                  : ready
+                                  ? context.statusColors.success
+                                  : AppColors.primary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   Text(
-                    ready ? 'Cours prêt' : 'Cours enregistré',
+                    ready
+                        ? 'Cours prêt'
+                        : failed
+                        ? 'Action nécessaire'
+                        : 'Votre cours avance',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   _RecordingSummaryCard(
                     courseTitle: courseTitle,
                     chapterTitle: chapter.title,
                     durationSeconds: recording.durationSecs ?? 0,
                   ),
-                  const SizedBox(height: 22),
-                  Text(
-                    ready ? 'Traitement terminé' : 'Traitement en cours',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                  const SizedBox(height: 12),
+                  _OverallProgressCard(
+                    progress: pipeline.overallProgress,
+                    message: pipeline.message,
+                    failed: failed,
+                    waiting: pipeline.isWaiting,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          ready ? 'Traitement terminé' : 'Traitement en cours',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      Text(
+                        '${recording.progressPercent.clamp(0, 100)} %',
+                        style: TextStyle(
+                          color: failed ? AppColors.error : AppColors.secondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   _ProcessingStep(
                     number: 1,
                     title: 'Sauvegarde sur cet appareil',
-                    subtitle: 'Terminé',
+                    subtitle: 'Terminé · disponible hors ligne',
                     state: _StepState.done,
                   ),
-                  _ProcessingStep(
+                  _ProcessingStep.fromView(
                     number: 2,
                     title: 'Envoi de l’enregistrement',
-                    subtitle: uploaded
-                        ? 'Terminé'
-                        : recording.status == 'uploading'
-                        ? '${(uploadProgress * 100).round()} %'
-                        : 'En attente de connexion',
-                    progress: recording.status == 'uploading'
-                        ? uploadProgress
-                        : null,
-                    state: failed
-                        ? _StepState.failed
-                        : uploaded
-                        ? _StepState.done
-                        : recording.status == 'uploading'
-                        ? _StepState.active
-                        : _StepState.pending,
+                    view: pipeline.step(
+                      'upload',
+                      fallbackProgress: recording.status == 'uploading'
+                          ? uploadProgress
+                          : null,
+                    ),
                   ),
-                  _ProcessingStep(
+                  _ProcessingStep.fromView(
                     number: 3,
-                    title: 'Création du résumé et du quiz',
-                    subtitle: ready
-                        ? 'Terminé'
-                        : failed
-                        ? 'Une erreur est survenue'
-                        : recording.status == 'processing'
-                        ? 'Analyse en cours…'
-                        : 'En attente',
-                    state: failed
-                        ? _StepState.failed
-                        : ready
-                        ? _StepState.done
-                        : recording.status == 'processing'
-                        ? _StepState.active
-                        : _StepState.pending,
+                    title: 'Transcription de l’audio',
+                    view: pipeline.step('transcription'),
                   ),
-                  const SizedBox(height: 18),
-                  if (phase == SyncPhase.offline ||
-                      recording.status == 'pending_sync')
+                  _ProcessingStep.fromView(
+                    number: 4,
+                    title: 'Fusion avec les séances précédentes',
+                    view: pipeline.step('consolidation'),
+                  ),
+                  _ProcessingStep.fromView(
+                    number: 5,
+                    title: 'Création du résumé, fiches et quiz',
+                    view: pipeline.step('generation'),
+                  ),
+                  _ProcessingStep.fromView(
+                    number: 6,
+                    title: 'Finalisation du chapitre',
+                    view: pipeline.step('finalization'),
+                  ),
+                  const SizedBox(height: 4),
+                  if (phase == SyncPhase.offline || pipeline.isWaiting)
                     _OfflineNotice(
                       text:
                           'Vous pouvez fermer l’application. Le traitement reprendra automatiquement dès que la connexion sera disponible.',
@@ -313,10 +381,11 @@ class CourseProcessingScreen extends ConsumerWidget {
                   else if (failed)
                     _OfflineNotice(
                       error: true,
-                      text:
-                          'Le traitement a échoué. Relancez la synchronisation pour réessayer.',
+                      text: recording.retryable
+                          ? 'Le traitement sera relancé automatiquement. Vous pouvez aussi forcer une tentative maintenant.'
+                          : pipeline.message,
                     ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 16),
                   FilledButton(
                     onPressed: ready
                         ? () => Navigator.of(context).pushReplacement(
@@ -327,9 +396,13 @@ class CourseProcessingScreen extends ConsumerWidget {
                               ),
                             ),
                           )
-                        : () => ref.read(syncEngineProvider).sync(force: true),
+                        : () => _continueOrRetry(context, ref, recording),
                     child: Text(
-                      ready ? 'Voir le résumé' : 'Synchroniser maintenant',
+                      ready
+                          ? 'Voir le résumé'
+                          : failed && recording.serverRecordingId != null
+                          ? 'Relancer le traitement'
+                          : 'Synchroniser maintenant',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -364,6 +437,166 @@ class CourseProcessingScreen extends ConsumerWidget {
 Future<int> _fileLength(String path) async {
   final file = File(path);
   return await file.exists() ? file.length() : 0;
+}
+
+class _RecordingPipeline {
+  const _RecordingPipeline(this.recording);
+
+  final Recording recording;
+
+  double get overallProgress => recording.progressPercent.clamp(0, 100) / 100;
+
+  String get message =>
+      recording.statusMessage ??
+      switch (recording.status) {
+        'pending_sync' => 'En attente d’une connexion au serveur',
+        'uploading' => 'Envoi de l’audio en cours…',
+        'processing' || 'synced' => 'Analyse du cours en cours…',
+        'ready' => 'Tous vos supports sont disponibles',
+        'failed' => 'Le traitement n’a pas pu être terminé',
+        _ => 'Cours sauvegardé sur cet appareil',
+      };
+
+  bool get isWaiting =>
+      recording.status == 'pending_sync' ||
+      const {
+        'saved_local',
+        'waiting_network',
+        'retry_wait',
+      }.contains(recording.pipelineStage);
+
+  _PipelineStepView step(String group, {double? fallbackProgress}) {
+    final (start, end) = switch (group) {
+      'upload' => (0, 40),
+      'transcription' => (40, 68),
+      'consolidation' => (68, 78),
+      'generation' => (78, 94),
+      _ => (94, 100),
+    };
+    final percent = recording.progressPercent.clamp(0, 100);
+    if (recording.status == 'ready' || percent >= end) {
+      return const _PipelineStepView(
+        state: _StepState.done,
+        subtitle: 'Terminé',
+      );
+    }
+
+    final activeGroup = _groupForStage(recording.pipelineStage, percent);
+    if (recording.status == 'failed' && activeGroup == group) {
+      return _PipelineStepView(state: _StepState.failed, subtitle: message);
+    }
+    if (activeGroup == group && isWaiting) {
+      return _PipelineStepView(state: _StepState.pending, subtitle: message);
+    }
+    if (activeGroup == group || (percent >= start && percent < end)) {
+      return _PipelineStepView(
+        state: _StepState.active,
+        subtitle: message,
+        progress: _stageProgress ?? fallbackProgress,
+      );
+    }
+    return const _PipelineStepView(
+      state: _StepState.pending,
+      subtitle: 'En attente',
+    );
+  }
+
+  double? get _stageProgress {
+    final current = recording.stageCurrent;
+    final total = recording.stageTotal;
+    if (current == null || total == null || total <= 0) return null;
+    return (current / total).clamp(0.0, 1.0);
+  }
+
+  String _groupForStage(String stage, int percent) => switch (stage) {
+    'saved_local' || 'waiting_network' || 'uploading' => 'upload',
+    'queued' ||
+    'checking_access' ||
+    'downloading_audio' ||
+    'transcribing' => 'transcription',
+    'transcription_ready' || 'consolidating_chapter' => 'consolidation',
+    'generating_material' => 'generation',
+    'saving_material' || 'ready' => 'finalization',
+    _ when percent < 40 => 'upload',
+    _ when percent < 68 => 'transcription',
+    _ when percent < 78 => 'consolidation',
+    _ when percent < 94 => 'generation',
+    _ => 'finalization',
+  };
+}
+
+class _OverallProgressCard extends StatelessWidget {
+  const _OverallProgressCard({
+    required this.progress,
+    required this.message,
+    required this.failed,
+    required this.waiting,
+  });
+
+  final double progress;
+  final String message;
+  final bool failed;
+  final bool waiting;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = failed
+        ? AppColors.error
+        : waiting
+        ? AppColors.warning
+        : AppColors.secondary;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 280),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                waiting ? Icons.cloud_queue_rounded : Icons.bolt_rounded,
+                size: 19,
+                color: color,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: Text(
+                    message,
+                    key: ValueKey(message),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 520),
+            curve: Curves.easeOutCubic,
+            tween: Tween(end: progress),
+            builder: (context, value, _) => LinearProgressIndicator(
+              value: value,
+              minHeight: 7,
+              borderRadius: BorderRadius.circular(20),
+              color: color,
+              backgroundColor: color.withValues(alpha: 0.12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RecordingSummaryCard extends StatelessWidget {
@@ -414,6 +647,18 @@ class _RecordingSummaryCard extends StatelessWidget {
 
 enum _StepState { done, active, pending, failed }
 
+class _PipelineStepView {
+  const _PipelineStepView({
+    required this.state,
+    required this.subtitle,
+    this.progress,
+  });
+
+  final _StepState state;
+  final String subtitle;
+  final double? progress;
+}
+
 class _ProcessingStep extends StatelessWidget {
   const _ProcessingStep({
     required this.number,
@@ -422,6 +667,18 @@ class _ProcessingStep extends StatelessWidget {
     required this.state,
     this.progress,
   });
+
+  factory _ProcessingStep.fromView({
+    required int number,
+    required String title,
+    required _PipelineStepView view,
+  }) => _ProcessingStep(
+    number: number,
+    title: title,
+    subtitle: view.subtitle,
+    state: view.state,
+    progress: view.progress,
+  );
 
   final int number;
   final String title;
@@ -469,16 +726,28 @@ class _ProcessingStep extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
-                Text(subtitle, style: TextStyle(color: color, fontSize: 12)),
-                if (progress != null) ...[
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    subtitle,
+                    key: ValueKey('$state:$subtitle'),
+                    style: TextStyle(color: color, fontSize: 12),
+                  ),
+                ),
+                if (state == _StepState.active) ...[
                   const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 5,
-                    borderRadius: BorderRadius.circular(10),
-                    color: AppColors.secondary,
-                    backgroundColor: AppColors.secondary.withValues(
-                      alpha: 0.12,
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOut,
+                    tween: Tween(end: progress ?? 0),
+                    builder: (context, value, _) => LinearProgressIndicator(
+                      value: progress == null ? null : value,
+                      minHeight: 5,
+                      borderRadius: BorderRadius.circular(10),
+                      color: AppColors.secondary,
+                      backgroundColor: AppColors.secondary.withValues(
+                        alpha: 0.12,
+                      ),
                     ),
                   ),
                 ],

@@ -5,11 +5,13 @@
 // both of which were critical for the recent fixes.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:buddywize/api/api_client.dart';
 import 'package:buddywize/core/config.dart';
 import 'package:buddywize/db/app_database.dart';
 import 'package:buddywize/sync/sync_engine.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -113,6 +115,47 @@ void main() {
       expect(engine.currentPhase, SyncPhase.done);
       expect(retries, 0);
     });
+
+    test(
+      'completed server upload is reconciled without resending audio',
+      () async {
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        final dir = await Directory.systemTemp.createTemp(
+          'buddywize-completed-upload-',
+        );
+        addTearDown(() => dir.delete(recursive: true));
+        final audio = File('${dir.path}/course.m4a');
+        await audio.writeAsBytes([1, 2, 3, 4]);
+
+        await db.into(db.recordings).insert(
+          RecordingsCompanion.insert(
+            clientUuid: 'recording-client-1',
+            chapterClientUuid: 'chapter-client-1',
+            localPath: audio.path,
+            status: const Value('uploading'),
+          ),
+        );
+
+        final api = _CompletedUploadApi();
+        final engine = SyncEngine(
+          db: db,
+          api: api,
+          enableForegroundTimer: false,
+        );
+        addTearDown(engine.dispose);
+
+        await engine.sync(force: true);
+
+        final recording = await db.select(db.recordings).getSingle();
+        expect(api.uploadChunkCalls, 0);
+        expect(api.completeUploadCalls, 0);
+        expect(recording.status, 'failed');
+        expect(recording.pipelineStage, 'failed');
+        expect(recording.serverRecordingId, 'recording-server-1');
+        expect(recording.uploadedBytes, 4);
+      },
+    );
   });
 }
 
@@ -155,4 +198,45 @@ class _SlowApi extends ApiClient {
     'quizzes': <dynamic>[],
     'cursor': 0,
   };
+}
+
+class _CompletedUploadApi extends _SlowApi {
+  _CompletedUploadApi() : super(Future<void>.value());
+
+  int uploadChunkCalls = 0;
+  int completeUploadCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> createUpload(Map<String, dynamic> body) async =>
+      const {
+        'upload_id': 'upload-server-1',
+        'offset': 4,
+        'completed': true,
+        'recording': {
+          'id': 'recording-server-1',
+          'status': 'failed',
+          'pipeline_stage': 'failed',
+          'progress_percent': 40,
+          'status_message': 'Le traitement doit être relancé',
+          'retryable': false,
+          'attempt_count': 1,
+          'error_code': 'media_runtime_unavailable',
+        },
+      };
+
+  @override
+  Future<Map<String, dynamic>> uploadChunk(
+    String uploadId,
+    int offset,
+    List<int> bytes,
+  ) async {
+    uploadChunkCalls += 1;
+    throw StateError('audio must not be resent');
+  }
+
+  @override
+  Future<Map<String, dynamic>> completeUpload(String uploadId) async {
+    completeUploadCalls += 1;
+    throw StateError('recording payload is already in the handshake');
+  }
 }

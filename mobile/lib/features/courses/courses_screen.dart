@@ -567,7 +567,41 @@ class ChapterDetailScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                if (progress.recordings.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.library_music_outlined,
+                          color: AppColors.secondary,
+                          size: 21,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${progress.recordings.length} séance${progress.recordings.length > 1 ? 's' : ''} enregistrée${progress.recordings.length > 1 ? 's' : ''}'
+                            '${progress.hasMaterial ? ' · ${progress.materialSessionCount} intégrée${progress.materialSessionCount > 1 ? 's' : ''} au matériel' : ''}',
+                            style: const TextStyle(
+                              color: AppColors.secondary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -582,7 +616,7 @@ class ChapterDetailScreen extends ConsumerWidget {
                       title: 'Résumé intelligent',
                       subtitle: progress.summary == null
                           ? 'En attente'
-                          : '${_readingMinutes(progress.summary!.contentMd)} min de lecture',
+                          : '${_readingMinutes(progress.summary!.contentMd)} min · ${progress.materialVersionCount} version${progress.materialVersionCount > 1 ? 's' : ''}',
                       enabled: progress.summary != null,
                       onTap: () => _openStudy(context, 0),
                     ),
@@ -620,11 +654,25 @@ class ChapterDetailScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 22),
-                Text(
-                  'Enregistrements',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Enregistrements',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    if (progress.recordings.isNotEmpty)
+                      Text(
+                        '${progress.recordings.length} séance${progress.recordings.length > 1 ? 's' : ''}',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 if (progress.recordings.isEmpty)
@@ -931,13 +979,14 @@ class _ChapterRecordingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, color, icon) = switch (recording.status) {
+    final (fallbackLabel, color, icon) = switch (recording.status) {
       'ready' => ('Prêt', AppColors.success, Icons.check_circle_rounded),
       'processing' => ('Traitement', AppColors.secondary, Icons.auto_awesome),
       'synced' => ('Synchronisé', AppColors.success, Icons.cloud_done_outlined),
       'failed' => ('Erreur', AppColors.error, Icons.error_outline_rounded),
       _ => ('En attente', AppColors.warning, Icons.schedule_rounded),
     };
+    final label = recording.statusMessage ?? fallbackLabel;
     final transcriptAvailable = transcriptIsAvailable(transcript);
     final transcriptProcessing = recording.status == 'processing';
     final transcriptLabel = transcriptAvailable
@@ -993,6 +1042,21 @@ class _ChapterRecordingCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (const {
+              'pending_sync',
+              'uploading',
+              'synced',
+              'processing',
+            }.contains(recording.status)) ...[
+              const SizedBox(height: 5),
+              LinearProgressIndicator(
+                value: recording.progressPercent.clamp(0, 100) / 100,
+                minHeight: 3,
+                borderRadius: BorderRadius.circular(8),
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.12),
+              ),
+            ],
             const SizedBox(height: 3),
             Row(
               children: [

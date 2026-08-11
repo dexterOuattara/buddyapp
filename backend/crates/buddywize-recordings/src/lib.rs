@@ -13,16 +13,12 @@ use axum::{
 };
 use sqlx::PgPool;
 
-use buddywize_core::JobSender;
-
 use crate::storage::StorageBackend;
 
 #[derive(Clone)]
 pub struct RecordingState {
     pub db: PgPool,
     pub storage: Arc<dyn StorageBackend>,
-    /// Sends completed recordings to the AI pipeline worker.
-    pub jobs: JobSender,
 }
 
 pub fn router(state: RecordingState) -> Router {
@@ -34,7 +30,10 @@ pub fn router(state: RecordingState) -> Router {
     Router::new()
         .route("/recordings", get(handlers::list_recordings))
         .route("/recordings/uploads", post(handlers::create_upload))
-        .route("/recordings/uploads/:id/complete", post(handlers::complete_upload))
+        .route(
+            "/recordings/uploads/:id/complete",
+            post(handlers::complete_upload),
+        )
         .route("/recordings/:id/reprocess", post(handlers::reprocess))
         .merge(chunk_route)
         .with_state(state)

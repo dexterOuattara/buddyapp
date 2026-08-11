@@ -247,11 +247,10 @@ pub async fn recording_detail(
 ) -> ApiResult<Json<RecordingDetailDto>> {
     let rec = load_admin_recording(&state, id).await?;
 
-    let user_email: Option<String> =
-        sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
-            .bind(rec.user_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let user_email: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(rec.user_id)
+        .fetch_optional(&state.db)
+        .await?;
 
     let chapter_title: Option<String> =
         sqlx::query_scalar("SELECT title FROM chapters WHERE id = $1")
@@ -259,12 +258,11 @@ pub async fn recording_detail(
             .fetch_optional(&state.db)
             .await?;
 
-    let transcript: Option<TranscriptRow> = sqlx::query_as(
-        "SELECT provider, content FROM transcripts WHERE recording_id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?;
+    let transcript: Option<TranscriptRow> =
+        sqlx::query_as("SELECT provider, content FROM transcripts WHERE recording_id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let summary: Option<StudySummaryRow> = sqlx::query_as(
         "SELECT id, status, content_md FROM summaries
@@ -343,7 +341,10 @@ pub async fn recording_audio(
     // can request a partial response for `<audio>` seek / streaming.
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
-    resp_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=300"));
+    resp_headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=300"),
+    );
 
     // Parse `Range: bytes=START-END` (per RFC 9110). We accept:
     //   bytes=START-      (open-ended: bytes START .. total)
@@ -372,7 +373,10 @@ pub async fn recording_audio(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes {start}-{end}/{total}")).unwrap(),
             );
-            let body = bytes.get(start as usize..=end as usize).unwrap_or(&[]).to_vec();
+            let body = bytes
+                .get(start as usize..=end as usize)
+                .unwrap_or(&[])
+                .to_vec();
             tracing::debug!(
                 recording_id = %id,
                 key = %key,
@@ -381,36 +385,40 @@ pub async fn recording_audio(
                 total,
                 "serving partial audio content"
             );
-            Ok(range_response(StatusCode::PARTIAL_CONTENT, body, resp_headers))
+            Ok(range_response(
+                StatusCode::PARTIAL_CONTENT,
+                body,
+                resp_headers,
+            ))
         }
         // bytes=-SUFFIX: last N bytes. Not useful for audio but easy.
         Some((u64::MAX, _)) => {
             let n = total.min(0);
-            let body = bytes.get(total as usize - n as usize..).unwrap_or(&[]).to_vec();
+            let body = bytes
+                .get(total as usize - n as usize..)
+                .unwrap_or(&[])
+                .to_vec();
             resp_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
             resp_headers.insert(
                 header::CONTENT_LENGTH,
                 HeaderValue::from_str(&body.len().to_string()).unwrap(),
             );
-            Ok(range_response(StatusCode::PARTIAL_CONTENT, body, resp_headers))
+            Ok(range_response(
+                StatusCode::PARTIAL_CONTENT,
+                body,
+                resp_headers,
+            ))
         }
         // Out-of-range or malformed: ignore Range, serve the whole file.
         _ => {
             resp_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
-            resp_headers.insert(
-                header::CONTENT_LENGTH,
-                HeaderValue::from(total),
-            );
+            resp_headers.insert(header::CONTENT_LENGTH, HeaderValue::from(total));
             Ok(range_response(StatusCode::OK, bytes, resp_headers))
         }
     }
 }
 
-fn range_response(
-    status: StatusCode,
-    bytes: Vec<u8>,
-    headers: HeaderMap,
-) -> Response {
+fn range_response(status: StatusCode, bytes: Vec<u8>, headers: HeaderMap) -> Response {
     let mut resp = Response::new(Body::from(bytes));
     *resp.status_mut() = status;
     resp.headers_mut().extend(headers);
@@ -503,7 +511,13 @@ pub async fn list_pending_moderation(
     .fetch_all(&state.db)
     .await?;
     for r in summaries {
-        items.push(PendingItem { id: r.id, kind: "summary".into(), recording_id: r.recording_id, chapter_id: r.chapter_id, created_at: r.created_at });
+        items.push(PendingItem {
+            id: r.id,
+            kind: "summary".into(),
+            recording_id: r.recording_id,
+            chapter_id: r.chapter_id,
+            created_at: r.created_at,
+        });
     }
 
     let exercises: Vec<Row> = sqlx::query_as(
@@ -513,7 +527,13 @@ pub async fn list_pending_moderation(
     .fetch_all(&state.db)
     .await?;
     for r in exercises {
-        items.push(PendingItem { id: r.id, kind: "exercises".into(), recording_id: r.recording_id, chapter_id: r.chapter_id, created_at: r.created_at });
+        items.push(PendingItem {
+            id: r.id,
+            kind: "exercises".into(),
+            recording_id: r.recording_id,
+            chapter_id: r.chapter_id,
+            created_at: r.created_at,
+        });
     }
 
     let quizzes: Vec<Row> = sqlx::query_as(
@@ -523,7 +543,13 @@ pub async fn list_pending_moderation(
     .fetch_all(&state.db)
     .await?;
     for r in quizzes {
-        items.push(PendingItem { id: r.id, kind: "quiz".into(), recording_id: r.recording_id, chapter_id: r.chapter_id, created_at: r.created_at });
+        items.push(PendingItem {
+            id: r.id,
+            kind: "quiz".into(),
+            recording_id: r.recording_id,
+            chapter_id: r.chapter_id,
+            created_at: r.created_at,
+        });
     }
 
     items.sort_by_key(|i| i.created_at);
@@ -540,7 +566,9 @@ fn validate_decision(d: &str) -> ApiResult<&'static str> {
     match d {
         "approved" => Ok("approved"),
         "rejected" => Ok("rejected"),
-        _ => Err(ApiError::BadRequest("decision must be approved or rejected".into())),
+        _ => Err(ApiError::BadRequest(
+            "decision must be approved or rejected".into(),
+        )),
     }
 }
 
@@ -603,7 +631,11 @@ async fn apply_decision(
         "UPDATE {table} SET status = $2, updated_at = now(), sync_version = nextval('sync_version_seq')
           WHERE id = $1 AND status = 'pending_review'"
     );
-    let updated = sqlx::query(&query).bind(id).bind(decision).execute(&state.db).await?;
+    let updated = sqlx::query(&query)
+        .bind(id)
+        .bind(decision)
+        .execute(&state.db)
+        .await?;
     if updated.rows_affected() == 0 {
         return Err(ApiError::NotFound);
     }
@@ -823,7 +855,9 @@ mod tests {
     async fn recording_audio_slices_bytes_correctly() {
         let bytes: Vec<u8> = (0..=255u8).cycle().take(1024).collect();
         let total = bytes.len() as u64;
-        let storage = Arc::new(FixedStorage { bytes: bytes.clone() });
+        let storage = Arc::new(FixedStorage {
+            bytes: bytes.clone(),
+        });
 
         // Simulate the bytes=0-(total-1) closed range that <audio> might send.
         let mut headers = HeaderMap::new();

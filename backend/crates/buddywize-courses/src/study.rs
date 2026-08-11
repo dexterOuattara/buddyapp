@@ -20,6 +20,7 @@ pub struct SummaryDto {
     pub id: Uuid,
     pub chapter_id: Uuid,
     pub recording_id: Uuid,
+    pub generation_id: Option<Uuid>,
     pub content_md: String,
     pub structured_content: Option<serde_json::Value>,
     pub sync_version: i64,
@@ -30,6 +31,7 @@ pub struct ExercisesDto {
     pub id: Uuid,
     pub chapter_id: Uuid,
     pub recording_id: Uuid,
+    pub generation_id: Option<Uuid>,
     pub items: serde_json::Value,
     pub sync_version: i64,
 }
@@ -39,6 +41,7 @@ pub struct QuizDto {
     pub id: Uuid,
     pub chapter_id: Uuid,
     pub recording_id: Uuid,
+    pub generation_id: Option<Uuid>,
     pub questions: serde_json::Value,
     pub sync_version: i64,
 }
@@ -90,7 +93,7 @@ pub async fn delta(
     .await?;
 
     let summaries: Vec<SummaryDto> = sqlx::query_as(
-        "SELECT s.id, s.chapter_id, s.recording_id, s.content_md,
+        "SELECT s.id, s.chapter_id, s.recording_id, s.generation_id, s.content_md,
                 s.structured_content, s.sync_version
            FROM summaries s
            JOIN recordings r ON r.id = s.recording_id
@@ -104,7 +107,7 @@ pub async fn delta(
     .await?;
 
     let exercises: Vec<ExercisesDto> = sqlx::query_as(
-        "SELECT e.id, e.chapter_id, e.recording_id, e.items, e.sync_version
+        "SELECT e.id, e.chapter_id, e.recording_id, e.generation_id, e.items, e.sync_version
            FROM exercises e
            JOIN recordings r ON r.id = e.recording_id
           WHERE r.user_id = $1 AND e.status = 'approved'
@@ -117,7 +120,7 @@ pub async fn delta(
     .await?;
 
     let quizzes: Vec<QuizDto> = sqlx::query_as(
-        "SELECT qz.id, qz.chapter_id, qz.recording_id, qz.questions, qz.sync_version
+        "SELECT qz.id, qz.chapter_id, qz.recording_id, qz.generation_id, qz.questions, qz.sync_version
            FROM quizzes qz
            JOIN recordings r ON r.id = qz.recording_id
           WHERE r.user_id = $1 AND qz.status = 'approved'

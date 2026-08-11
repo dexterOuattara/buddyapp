@@ -2,6 +2,10 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::{future::Future, pin::Pin};
+
+pub type SttProgressFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+pub type SttProgressCallback<'a> = dyn FnMut(usize, usize) -> SttProgressFuture<'a> + Send + 'a;
 
 /// A single spoken word aligned with the recording timeline.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -136,6 +140,19 @@ pub trait SttProvider: Send + Sync {
     fn name(&self) -> &str;
     /// Transcribe raw audio bytes.
     async fn transcribe(&self, audio: &[u8]) -> anyhow::Result<Transcript>;
+
+    /// Report completed/total audio chunks while transcribing. Providers that
+    /// do not split audio still expose the honest 0/1 → 1/1 lifecycle.
+    async fn transcribe_with_progress(
+        &self,
+        audio: &[u8],
+        progress: &mut SttProgressCallback<'_>,
+    ) -> anyhow::Result<Transcript> {
+        progress(0, 1).await;
+        let transcript = self.transcribe(audio).await?;
+        progress(1, 1).await;
+        Ok(transcript)
+    }
 }
 
 /// Summarization / exercise / quiz generator.

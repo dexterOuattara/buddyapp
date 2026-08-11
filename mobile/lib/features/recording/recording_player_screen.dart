@@ -226,7 +226,12 @@ class _RecordingPlayerScreenState extends ConsumerState<RecordingPlayerScreen> {
               .read(databaseProvider)
               .update(ref.read(databaseProvider).recordings)
             ..where((row) => row.id.equals(widget.recording.id)))
-          .write(const RecordingsCompanion(status: Value('processing')));
+          .write(const RecordingsCompanion(
+            status: Value('processing'),
+            pipelineStage: Value('queued'),
+            progressPercent: Value(40),
+            statusMessage: Value('Transcription relancée…'),
+          ));
       if (mounted) {
         setState(() {
           _transcriptNotice =
@@ -560,6 +565,8 @@ class _RecordingPlayerScreenState extends ConsumerState<RecordingPlayerScreen> {
               _TranscriptUnavailable(
                 processing:
                     widget.recording.status == 'processing' || _regenerating,
+                canRetry: widget.recording.serverRecordingId != null,
+                onRetry: _regenerateTranscript,
               )
             else if (_segments.isEmpty) ...[
               Container(
@@ -802,9 +809,15 @@ class _AnimatedTranscriptWord extends StatelessWidget {
 }
 
 class _TranscriptUnavailable extends StatelessWidget {
-  const _TranscriptUnavailable({required this.processing});
+  const _TranscriptUnavailable({
+    required this.processing,
+    required this.canRetry,
+    required this.onRetry,
+  });
 
   final bool processing;
+  final bool canRetry;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -815,25 +828,41 @@ class _TranscriptUnavailable extends StatelessWidget {
         color: AppColors.canvas,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (processing)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            const Icon(Icons.subtitles_off_rounded, color: AppColors.muted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              processing
-                  ? 'Transcription en cours de création…'
-                  : 'Transcription pas disponible',
-              style: const TextStyle(color: AppColors.muted),
-            ),
+          Row(
+            children: [
+              if (processing)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(
+                  Icons.subtitles_off_rounded,
+                  color: AppColors.muted,
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  processing
+                      ? 'Transcription en cours de création…'
+                      : 'Transcription pas disponible',
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+              ),
+            ],
           ),
+          if (!processing && canRetry) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Relancer la transcription'),
+            ),
+          ],
         ],
       ),
     );

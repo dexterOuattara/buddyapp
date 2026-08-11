@@ -184,4 +184,76 @@ void main() {
     expect(chapter.exerciseCount, 3);
     expect(chapter.quizCount, 2);
   });
+
+  test(
+    'keeps many recordings and groups immutable cumulative material',
+    () async {
+      for (var index = 1; index <= 2; index++) {
+        await db
+            .into(db.recordings)
+            .insert(
+              RecordingsCompanion.insert(
+                clientUuid: 'recording-$index',
+                chapterClientUuid: 'chapter-1',
+                localPath: '/tmp/recording-$index.m4a',
+                serverRecordingId: Value('recording-server-$index'),
+                createdAt: Value(DateTime(2026, 8, index)),
+              ),
+            );
+        await db
+            .into(db.summaries)
+            .insert(
+              SummariesCompanion.insert(
+                serverId: Value('summary-$index'),
+                recordingServerId: Value('recording-server-$index'),
+                generationId: Value('generation-$index'),
+                chapterClientUuid: 'chapter-1',
+                contentMd: '# Version $index',
+                structuredJson: Value('{"session_count":$index}'),
+                syncVersion: Value(index * 10),
+              ),
+            );
+        await db
+            .into(db.exercises)
+            .insert(
+              ExercisesCompanion.insert(
+                serverId: Value('exercise-$index'),
+                recordingServerId: Value('recording-server-$index'),
+                generationId: Value('generation-$index'),
+                chapterClientUuid: 'chapter-1',
+                itemsJson: '[{"prompt":"Version $index"}]',
+                syncVersion: Value(index * 10 + 1),
+              ),
+            );
+        await db
+            .into(db.quizzes)
+            .insert(
+              QuizzesCompanion.insert(
+                serverId: Value('quiz-$index'),
+                recordingServerId: Value('recording-server-$index'),
+                generationId: Value('generation-$index'),
+                chapterClientUuid: 'chapter-1',
+                questionsJson: '[{"prompt":"Version $index"}]',
+                syncVersion: Value(index * 10 + 2),
+              ),
+            );
+      }
+
+      final chapter = (await repository.load()).courses.single.chapters.first;
+
+      expect(chapter.recordings.map((row) => row.clientUuid), [
+        'recording-2',
+        'recording-1',
+      ]);
+      expect(chapter.materialVersionCount, 2);
+      expect(chapter.materialSessionCount, 2);
+      expect(chapter.summary?.contentMd, '# Version 2');
+      expect(
+        chapter.materialVersions.first.exercise?.generationId,
+        'generation-2',
+      );
+      expect(chapter.materialVersions.first.quiz?.generationId, 'generation-2');
+      expect(chapter.materialVersions.last.summary?.contentMd, '# Version 1');
+    },
+  );
 }
