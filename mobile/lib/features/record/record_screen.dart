@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../db/app_database.dart';
 import '../../providers.dart';
+import '../../sync/background_sync.dart';
 import '../recording/recording_player_screen.dart';
 import '../recording/recorder_service.dart';
 
@@ -19,6 +22,15 @@ class RecordScreen extends ConsumerStatefulWidget {
 class _RecordScreenState extends ConsumerState<RecordScreen> {
   bool _recording = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Recover recording state after widget recreation (hot restart, process
+    // kill). Without this, an active OS-level recording becomes orphaned: the
+    // microphone keeps capturing but the UI shows "not recording".
+    _recording = ref.read(recorderServiceProvider).isRecording;
+  }
+
   Future<void> _toggle() async {
     final recorder = ref.read(recorderServiceProvider);
     if (_recording) {
@@ -28,8 +40,8 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       });
       // Kick a sync right away so the new recording starts uploading without
       // waiting for the periodic timer (default 45s) or a manual button tap.
-      // ignore: unawaited futures
-      Future.microtask(() => ref.read(syncEngineProvider).sync());
+      unawaited(BackgroundSyncScheduler.enqueueWhenOnline());
+      unawaited(ref.read(syncEngineProvider).sync());
     } else {
       final chapterUuid = await _pickChapter();
       if (chapterUuid == null) return;
@@ -149,17 +161,33 @@ class _RecordingTile extends StatelessWidget {
     'local_only' || 'pending_sync' => (
       Icons.cloud_upload,
       AppColors.warning,
-      'Waiting to upload',
+      recording.statusMessage ?? 'En attente d’envoi',
     ),
-    'uploading' => (Icons.cloud_upload, AppColors.secondary, 'Uploading…'),
-    'synced' => (Icons.cloud_done, AppColors.success, 'Uploaded'),
+    'uploading' => (
+      Icons.cloud_upload,
+      AppColors.secondary,
+      recording.statusMessage ?? 'Envoi en cours…',
+    ),
+    'synced' => (
+      Icons.cloud_done,
+      AppColors.secondary,
+      recording.statusMessage ?? 'Traitement programmé',
+    ),
     'processing' => (
       Icons.psychology,
       AppColors.secondary,
-      'Generating summary…',
+      recording.statusMessage ?? 'Création des supports…',
     ),
-    'ready' => (Icons.check_circle, AppColors.success, 'Study material ready'),
-    _ => (Icons.error_outline, AppColors.error, 'Sync failed'),
+    'ready' => (
+      Icons.check_circle,
+      AppColors.success,
+      recording.statusMessage ?? 'Supports prêts',
+    ),
+    _ => (
+      Icons.error_outline,
+      AppColors.error,
+      recording.statusMessage ?? 'Échec du traitement',
+    ),
   };
 
   @override
@@ -182,6 +210,21 @@ class _RecordingTile extends StatelessWidget {
           children: [
             Text(DateFormat.yMMMd().add_jm().format(recording.createdAt)),
             Text(label, style: TextStyle(color: color, fontSize: 12)),
+            if (const {
+              'pending_sync',
+              'uploading',
+              'synced',
+              'processing',
+            }.contains(recording.status)) ...[
+              const SizedBox(height: 5),
+              LinearProgressIndicator(
+                value: recording.progressPercent.clamp(0, 100) / 100,
+                minHeight: 4,
+                borderRadius: BorderRadius.circular(8),
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.12),
+              ),
+            ],
           ],
         ),
         trailing: const Icon(

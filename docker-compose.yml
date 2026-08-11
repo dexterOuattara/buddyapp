@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: buddywize
       POSTGRES_PASSWORD: buddywize_dev
@@ -18,14 +19,20 @@ services:
   api:
     build:
       context: ./backend
+    init: true
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://buddywize:buddywize_dev@postgres:5432/buddywize
+      # Override with the shared environment database when the mobile app must
+      # keep its existing users, recordings and refresh-token sessions.
+      DATABASE_URL: ${DATABASE_URL:-postgres://buddywize:buddywize_dev@postgres:5432/buddywize}
       HOST: 0.0.0.0
       PORT: "7878"
-      JWT_SECRET: change-me-in-production
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@buddywize.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-buddywize}
 
       # Object storage. Leave R2_* unset to use the local filesystem at
       # /data/storage. Set R2_BUCKET + credentials to use Cloudflare R2.
@@ -56,12 +63,21 @@ services:
       - "7878:7878"
     volumes:
       - storage:/data/storage
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:7878/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   admin:
     build:
       context: ./admin
+    init: true
+    restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       # Served by the static preview server; the browser calls the API via VITE_API_URL
       VITE_API_URL: http://localhost:7878/api

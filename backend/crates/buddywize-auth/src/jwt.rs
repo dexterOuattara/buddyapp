@@ -98,7 +98,14 @@ mod tests {
     #[test]
     fn admin_role_preserved() {
         let secret = "secret";
-        let token = issue(secret, 3600, Uuid::new_v4(), "admin@buddywize.local", "admin").unwrap();
+        let token = issue(
+            secret,
+            3600,
+            Uuid::new_v4(),
+            "admin@buddywize.local",
+            "admin",
+        )
+        .unwrap();
         let claims = validate(secret, &token).unwrap();
         assert_eq!(claims.role, "admin");
     }

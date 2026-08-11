@@ -21,7 +21,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::providers::{
-    estimate_word_timings, SttProvider, Transcript, TranscriptSegment, TranscriptWord,
+    estimate_word_timings, SttProgressCallback, SttProgressFuture, SttProvider, Transcript,
+    TranscriptSegment, TranscriptWord,
 };
 
 /// Cloudflare's per-request audio payload cap. We stay safely under it.
@@ -34,6 +35,8 @@ pub struct CloudflareWhisperConfig {
     pub account_id: String,
     pub token: String,
     pub model: String,
+    pub ffprobe_path: PathBuf,
+    pub ffmpeg_path: PathBuf,
 }
 
 impl CloudflareWhisperConfig {
@@ -52,12 +55,46 @@ impl CloudflareWhisperConfig {
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "@cf/openai/whisper-large-v3-turbo".to_string());
+        let ffprobe_path = resolve_media_binary("FFPROBE_PATH", "ffprobe")?;
+        let ffmpeg_path = resolve_media_binary("FFMPEG_PATH", "ffmpeg")?;
         Ok(Self {
             account_id,
             token,
             model,
+            ffprobe_path,
+            ffmpeg_path,
         })
     }
+}
+
+fn resolve_media_binary(env_key: &str, name: &str) -> anyhow::Result<PathBuf> {
+    if let Ok(explicit) = std::env::var(env_key) {
+        let path = PathBuf::from(explicit);
+        if path.is_file() {
+            return Ok(path);
+        }
+        anyhow::bail!(
+            "{env_key} points to a missing executable: {}",
+            path.display()
+        );
+    }
+
+    let mut candidates = std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join(name))
+        .collect::<Vec<_>>();
+    candidates.extend([
+        PathBuf::from(format!("/opt/homebrew/bin/{name}")),
+        PathBuf::from(format!("/usr/local/bin/{name}")),
+        PathBuf::from(format!("/usr/bin/{name}")),
+    ]);
+    if let Some(path) = candidates.into_iter().find(|path| path.is_file()) {
+        return Ok(path);
+    }
+    anyhow::bail!(
+        "{name} is required by the Cloudflare Whisper pipeline but was not found; install ffmpeg or set {env_key}"
+    )
 }
 
 pub struct CloudflareWhisperStt {
@@ -76,7 +113,7 @@ impl CloudflareWhisperStt {
 
     /// Probe audio duration with ffprobe (seconds, 1 decimal).
     async fn probe_duration(&self, audio_path: &std::path::Path) -> anyhow::Result<f64> {
-        let out = Command::new("ffprobe")
+        let out = Command::new(&self.cfg.ffprobe_path)
             .arg("-v")
             .arg("quiet")
             .arg("-show_entries")
@@ -117,7 +154,7 @@ impl CloudflareWhisperStt {
             let remaining = duration - t;
             let seg_len = remaining.min(MAX_SECONDS_PER_SEGMENT);
             let out_path = out_dir.join(format!("seg-{idx:03}.m4a"));
-            let status = Command::new("ffmpeg")
+            let status = Command::new(&self.cfg.ffmpeg_path)
                 .arg("-y")
                 .arg("-loglevel")
                 .arg("error")
@@ -207,6 +244,15 @@ impl SttProvider for CloudflareWhisperStt {
     }
 
     async fn transcribe(&self, audio: &[u8]) -> anyhow::Result<Transcript> {
+        let mut noop = |_: usize, _: usize| -> SttProgressFuture<'_> { Box::pin(async {}) };
+        self.transcribe_with_progress(audio, &mut noop).await
+    }
+
+    async fn transcribe_with_progress(
+        &self,
+        audio: &[u8],
+        progress: &mut SttProgressCallback<'_>,
+    ) -> anyhow::Result<Transcript> {
         if audio.is_empty() {
             anyhow::bail!("audio is empty; nothing to transcribe");
         }
@@ -228,6 +274,7 @@ impl SttProvider for CloudflareWhisperStt {
 
         let slices = self.slice_audio(&audio_path, &tmp_dir).await?;
         tracing::info!(segments = slices.len(), "Cloudflare Whisper: audio sliced");
+        progress(0, slices.len()).await;
 
         let mut texts = Vec::with_capacity(slices.len());
         let mut segments = Vec::new();
@@ -280,6 +327,7 @@ impl SttProvider for CloudflareWhisperStt {
                     }
                     texts.push(chunk.text);
                     offset_ms += slice_duration_ms;
+                    progress(i + 1, slices.len()).await;
                 }
                 Err(e) => {
                     // Best-effort cleanup before propagating.
@@ -468,6 +516,8 @@ mod tests {
             account_id: "x".into(),
             token: "y".into(),
             model: "@cf/openai/whisper-large-v3-turbo".into(),
+            ffprobe_path: PathBuf::from("/usr/bin/true"),
+            ffmpeg_path: PathBuf::from("/usr/bin/true"),
         };
         let stt = CloudflareWhisperStt::new(cfg);
         assert_eq!(stt.name(), "cloudflare-whisper-large-v3-turbo");
@@ -498,8 +548,13 @@ mod tests {
         let saved = std::env::var("CF_AI_TOKEN").ok();
         let saved_id = std::env::var("CF_ACCOUNT_ID").ok();
         let saved_model = std::env::var("CF_WHISPER_MODEL").ok();
+        let saved_probe = std::env::var("FFPROBE_PATH").ok();
+        let saved_mpeg = std::env::var("FFMPEG_PATH").ok();
+        let executable = std::env::current_exe().unwrap();
         std::env::set_var("CF_ACCOUNT_ID", "test-account");
         std::env::set_var("CF_AI_TOKEN", "test-token");
+        std::env::set_var("FFPROBE_PATH", &executable);
+        std::env::set_var("FFMPEG_PATH", &executable);
         std::env::remove_var("CF_WHISPER_MODEL");
         let cfg = CloudflareWhisperConfig::from_env().unwrap();
         assert_eq!(cfg.model, "@cf/openai/whisper-large-v3-turbo");
@@ -507,6 +562,8 @@ mod tests {
             ("CF_AI_TOKEN", saved),
             ("CF_ACCOUNT_ID", saved_id),
             ("CF_WHISPER_MODEL", saved_model),
+            ("FFPROBE_PATH", saved_probe),
+            ("FFMPEG_PATH", saved_mpeg),
         ] {
             match v {
                 Some(s) => std::env::set_var(k, s),

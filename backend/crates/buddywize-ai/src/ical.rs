@@ -173,11 +173,7 @@ impl VEvent {
     }
 }
 
-fn advance_weekly(
-    current: DateTime<Utc>,
-    by_day: &[Weekday],
-    interval: u32,
-) -> DateTime<Utc> {
+fn advance_weekly(current: DateTime<Utc>, by_day: &[Weekday], interval: u32) -> DateTime<Utc> {
     let current_wd = current.weekday();
     let mut candidate = current;
     for _ in 0..7 {
@@ -321,7 +317,9 @@ fn unescape_text(s: &str) -> String {
 
 fn parse_dt(value: &str, params: &[(String, String)]) -> Option<(NaiveDateTime, bool)> {
     let param_marks_utc = params.iter().any(|(k, v)| k == "VALUE" && v == "DATE-TIME")
-        || params.iter().any(|(k, v)| k == "TZID" && v.to_uppercase() == "UTC");
+        || params
+            .iter()
+            .any(|(k, v)| k == "TZID" && v.to_uppercase() == "UTC");
     let value = value.trim();
 
     // Strip trailing "Z" so we can use the literal format string below.

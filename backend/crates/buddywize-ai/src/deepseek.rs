@@ -276,7 +276,7 @@ impl DeepSeekStudyGenerator {
 }
 
 const SYSTEM_PROMPT: &str = "You are BuddyWize, a strict study-material generator. \
-You receive a lecture transcript and a chapter title. \
+You receive one or more chronological lecture-session transcripts and a chapter title. \
 You must analyse the transcript, identify the 3-5 most important concepts, \
 and produce a JSON object that matches the schema below. \
 Do NOT include anything outside the JSON object. \
@@ -295,7 +295,7 @@ fn build_user_prompt(chapter_title: &str, transcript: &Transcript) -> String {
     format!(
         "Chapter title: {chapter_title}\n\
          {lang_hint}\
-         Transcript (whisper, may contain minor ASR errors):\n\
+         Cumulative chapter transcript (one or more chronological sessions; whisper may contain minor ASR errors):\n\
          ---\n\
          {text}\n\
          ---\n\
@@ -323,6 +323,8 @@ fn build_user_prompt(chapter_title: &str, transcript: &Transcript) -> String {
          }}\n\
          \n\
          Constraints:\n\
+         - consolidate all supplied sessions into one coherent chapter pack;\n\
+         - retain useful concepts from earlier sessions while integrating new material;\n\
          - exercises and quiz items MUST be grounded in the transcript (or the\n\
          \x20 chapter title if the transcript is sparse).\n\
          - quiz.correct_index must be a valid index into quiz.choices.\n\

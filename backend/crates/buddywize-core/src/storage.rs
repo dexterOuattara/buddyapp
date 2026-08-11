@@ -17,6 +17,7 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::config::{Builder as S3ConfigBuilder, Region};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client as S3Client;
+use sqlx::PgPool;
 use tokio::sync::Mutex;
 
 #[derive(Debug, thiserror::Error)]
@@ -40,6 +41,12 @@ pub struct UploadChunk {
 
 #[async_trait]
 pub trait StorageBackend: Send + Sync {
+    /// Stable identity for the physical storage namespace. The API binds a
+    /// database to this value so an accidental backend switch cannot create
+    /// rows whose objects live somewhere else.
+    fn namespace(&self) -> String {
+        "custom".to_string()
+    }
     /// Begin a resumable upload; returns nothing on success.
     async fn create_upload(&self, key: &str) -> StorageResult<()>;
     /// Append a chunk at `offset` (resume-safe: server validates the offset).
@@ -87,6 +94,10 @@ impl LocalFsStorage {
 
 #[async_trait]
 impl StorageBackend for LocalFsStorage {
+    fn namespace(&self) -> String {
+        format!("local:{}", self.root.display())
+    }
+
     async fn create_upload(&self, key: &str) -> StorageResult<()> {
         tokio::fs::File::create(self.partial_path(key)).await?;
         Ok(())
@@ -152,6 +163,7 @@ impl StorageBackend for LocalFsStorage {
 pub struct R2Storage {
     client: S3Client,
     bucket: String,
+    namespace: String,
     /// In-flight uploads keyed by the object key. Each entry holds the
     /// accumulated bytes; entries are inserted on `create_upload` and
     /// removed on `finish_upload`.
@@ -219,11 +231,12 @@ impl R2Storage {
             .bucket(&cfg.bucket)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("R2 head_bucket({}) failed: {}", cfg.bucket, e))?;
+            .map_err(|e| anyhow::anyhow!("R2 head_bucket({}) failed: {e:?}", cfg.bucket))?;
 
         Ok(Self {
             client,
             bucket: cfg.bucket.clone(),
+            namespace: format!("r2:{}/{}", cfg.account_id, cfg.bucket),
             uploads: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -231,6 +244,10 @@ impl R2Storage {
 
 #[async_trait]
 impl StorageBackend for R2Storage {
+    fn namespace(&self) -> String {
+        self.namespace.clone()
+    }
+
     async fn create_upload(&self, key: &str) -> StorageResult<()> {
         // Initialize an empty in-memory buffer for this upload. The actual
         // bytes are not sent to R2 until `finish_upload` calls `put_object`.
@@ -248,7 +265,10 @@ impl StorageBackend for R2Storage {
         let upload = uploads.entry(key.to_string()).or_default();
 
         if chunk.offset != upload.offset() {
-            return Err(LocalFsStorage::offset_mismatch(chunk.offset, upload.offset()));
+            return Err(LocalFsStorage::offset_mismatch(
+                chunk.offset,
+                upload.offset(),
+            ));
         }
 
         upload.bytes.extend_from_slice(&chunk.bytes);
@@ -271,9 +291,13 @@ impl StorageBackend for R2Storage {
             upload.bytes
         };
 
-        // Empty uploads are a no-op.
+        // Reject empty uploads — creating a recording row that points to a
+        // non-existent R2 object would produce a confusing "object not found"
+        // error in the AI pipeline instead of a clear "empty recording" message.
         if bytes.is_empty() {
-            return Ok(());
+            return Err(StorageError::Backend(
+                "refusing to finalize an empty upload (0 bytes received)".into(),
+            ));
         }
 
         // Single-shot upload. R2 supports up to 5 GiB per PUT; if we ever
@@ -287,7 +311,7 @@ impl StorageBackend for R2Storage {
             .body(ByteStream::from(bytes))
             .send()
             .await
-            .map_err(|e| StorageError::Backend(format!("r2 put_object: {e}")))?;
+            .map_err(|e| StorageError::Backend(format!("r2 put_object: {e:?}")))?;
 
         Ok(())
     }
@@ -300,19 +324,56 @@ impl StorageBackend for R2Storage {
             .key(key)
             .send()
             .await
-            .map_err(|e| StorageError::Backend(format!("r2 get_object: {e}")))?;
+            .map_err(|e| StorageError::Backend(format!("r2 get_object: {e:?}")))?;
 
         let collected = resp
             .body
             .collect()
             .await
-            .map_err(|e| StorageError::Backend(format!("r2 read body: {e}")))?;
+            .map_err(|e| StorageError::Backend(format!("r2 read body: {e:?}")))?;
         Ok(collected.into_bytes().to_vec())
     }
 
     fn location(&self, key: &str) -> String {
         format!("r2://{}/{}", self.bucket, key)
     }
+}
+
+const STORAGE_NAMESPACE_SETTING: &str = "system_storage_namespace";
+
+/// Permanently bind a database to its configured object-storage namespace.
+///
+/// The first successful startup records the namespace. Later startups refuse
+/// to run when the account/bucket or local directory differs. This prevents a
+/// locally completed upload from leaving a valid database row that a later R2
+/// process can never read (and vice versa).
+pub async fn bind_database_namespace(
+    db: &PgPool,
+    storage: &dyn StorageBackend,
+) -> anyhow::Result<()> {
+    let expected = storage.namespace();
+    let mut tx = db.begin().await?;
+    sqlx::query(
+        "INSERT INTO app_settings (key, value)
+         VALUES ($1, $2)
+         ON CONFLICT (key) DO NOTHING",
+    )
+    .bind(STORAGE_NAMESPACE_SETTING)
+    .bind(&expected)
+    .execute(&mut *tx)
+    .await?;
+    let bound: String = sqlx::query_scalar("SELECT value FROM app_settings WHERE key = $1")
+        .bind(STORAGE_NAMESPACE_SETTING)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    anyhow::ensure!(
+        bound == expected,
+        "database storage mismatch: database is bound to `{bound}`, but this process configured `{expected}`; refusing to start to prevent orphaned recording objects"
+    );
+    tracing::info!(namespace = %expected, "database storage namespace verified");
+    Ok(())
 }
 
 /// Resolves a storage backend from environment variables. If `R2_BUCKET` is
@@ -323,10 +384,12 @@ pub async fn from_env() -> anyhow::Result<Arc<dyn StorageBackend>> {
     let storage: Arc<dyn StorageBackend> = match r2_bucket {
         Some(bucket) if !bucket.is_empty() => {
             let cfg = R2Config {
-                account_id: std::env::var("R2_ACCOUNT_ID")
-                    .map_err(|_| anyhow::anyhow!("R2_BUCKET is set but R2_ACCOUNT_ID is missing"))?,
-                access_key_id: std::env::var("R2_ACCESS_KEY_ID")
-                    .map_err(|_| anyhow::anyhow!("R2_BUCKET is set but R2_ACCESS_KEY_ID is missing"))?,
+                account_id: std::env::var("R2_ACCOUNT_ID").map_err(|_| {
+                    anyhow::anyhow!("R2_BUCKET is set but R2_ACCOUNT_ID is missing")
+                })?,
+                access_key_id: std::env::var("R2_ACCESS_KEY_ID").map_err(|_| {
+                    anyhow::anyhow!("R2_BUCKET is set but R2_ACCESS_KEY_ID is missing")
+                })?,
                 secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").map_err(|_| {
                     anyhow::anyhow!("R2_BUCKET is set but R2_SECRET_ACCESS_KEY is missing")
                 })?,
@@ -393,7 +456,13 @@ mod tests {
             assert_eq!(storage.upload_offset(key).await.unwrap(), 0);
 
             let new = storage
-                .append_chunk(key, UploadChunk { offset: 0, bytes: b"hello".to_vec() })
+                .append_chunk(
+                    key,
+                    UploadChunk {
+                        offset: 0,
+                        bytes: b"hello".to_vec(),
+                    },
+                )
                 .await
                 .unwrap();
             assert_eq!(new, 5);
@@ -401,7 +470,13 @@ mod tests {
 
             // Wrong offset must error.
             let err = storage
-                .append_chunk(key, UploadChunk { offset: 0, bytes: b"x".to_vec() })
+                .append_chunk(
+                    key,
+                    UploadChunk {
+                        offset: 0,
+                        bytes: b"x".to_vec(),
+                    },
+                )
                 .await
                 .unwrap_err();
             assert!(matches!(err, StorageError::Io(_)));

@@ -208,7 +208,10 @@ mod tests {
     #[test]
     fn api_error_display_messages() {
         assert_eq!(ApiError::NotFound.to_string(), "resource not found");
-        assert_eq!(ApiError::Unauthorized.to_string(), "authentication required");
+        assert_eq!(
+            ApiError::Unauthorized.to_string(),
+            "authentication required"
+        );
         assert_eq!(ApiError::Forbidden.to_string(), "insufficient permissions");
         assert_eq!(
             ApiError::Conflict("email taken".into()).to_string(),
@@ -228,7 +231,10 @@ mod tests {
             (ApiError::Forbidden, StatusCode::FORBIDDEN),
             (ApiError::Conflict("x".into()), StatusCode::CONFLICT),
             (ApiError::BadRequest("x".into()), StatusCode::BAD_REQUEST),
-            (ApiError::Internal(anyhow::anyhow!("x")), StatusCode::INTERNAL_SERVER_ERROR),
+            (
+                ApiError::Internal(anyhow::anyhow!("x")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
         ];
         for (err, expected) in cases {
             let response = err.into_response();

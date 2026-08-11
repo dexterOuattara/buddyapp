@@ -32,7 +32,10 @@ mod tests {
         let password = "super-secret-password";
         let encoded = hash(password).expect("hash should succeed");
         assert!(verify(password, &encoded), "correct password should verify");
-        assert!(!verify("wrong-password", &encoded), "wrong password should fail");
+        assert!(
+            !verify("wrong-password", &encoded),
+            "wrong password should fail"
+        );
     }
 
     #[test]
@@ -40,7 +43,10 @@ mod tests {
         let password = "same-password";
         let h1 = hash(password).unwrap();
         let h2 = hash(password).unwrap();
-        assert_ne!(h1, h2, "two hashes of the same password should differ (random salt)");
+        assert_ne!(
+            h1, h2,
+            "two hashes of the same password should differ (random salt)"
+        );
         assert!(verify(password, &h1));
         assert!(verify(password, &h2));
     }

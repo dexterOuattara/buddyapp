@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/app_theme.dart';
@@ -109,6 +110,7 @@ class ChapterStudyView extends ConsumerStatefulWidget {
 class _ChapterStudyViewState extends ConsumerState<ChapterStudyView>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  String? _selectedMaterialKey;
 
   @override
   void initState() {
@@ -134,6 +136,11 @@ class _ChapterStudyViewState extends ConsumerState<ChapterStudyView>
         .watch(courseCatalogProvider)
         .valueOrNull
         ?.chapter(widget.chapter.clientUuid);
+    final versions = chapterProgress?.materialVersions ?? const [];
+    final selectedMaterial = versions
+        .where((version) => version.key == _selectedMaterialKey)
+        .firstOrNull;
+    final material = selectedMaterial ?? versions.firstOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -164,6 +171,15 @@ class _ChapterStudyViewState extends ConsumerState<ChapterStudyView>
                   widget.chapter.title,
                   style: const TextStyle(color: AppColors.muted, fontSize: 12),
                 ),
+                if (material != null) ...[
+                  const SizedBox(height: 9),
+                  _MaterialVersionPicker(
+                    versions: versions,
+                    selected: material,
+                    onSelected: (key) =>
+                        setState(() => _selectedMaterialKey = key),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(4),
@@ -200,16 +216,16 @@ class _ChapterStudyViewState extends ConsumerState<ChapterStudyView>
               controller: _tabs,
               children: [
                 _SummaryTab(
-                  db: db,
-                  chapterUuid: widget.chapter.clientUuid,
+                  summary: material?.summary,
                   mastery: chapterProgress?.mastery ?? 0,
                   onStartQuiz: () => _tabs.animateTo(2),
                 ),
-                _FlashcardsTab(db: db, chapterUuid: widget.chapter.clientUuid),
+                _FlashcardsTab(summary: material?.summary),
                 _QuizTab(
                   db: db,
                   chapter: widget.chapter,
                   courseTitle: widget.courseTitle,
+                  quiz: material?.quiz,
                 ),
               ],
             ),
@@ -220,7 +236,129 @@ class _ChapterStudyViewState extends ConsumerState<ChapterStudyView>
   }
 }
 
-class ChapterExercisesScreen extends ConsumerWidget {
+class _MaterialVersionPicker extends StatelessWidget {
+  const _MaterialVersionPicker({
+    required this.versions,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<ChapterMaterialVersion> versions;
+  final ChapterMaterialVersion selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLatest = selected.key == versions.first.key;
+    return PopupMenuButton<String>(
+      tooltip: 'Choisir une version du matériel',
+      initialValue: selected.key,
+      onSelected: onSelected,
+      itemBuilder: (_) => [
+        for (var index = 0; index < versions.length; index++)
+          PopupMenuItem(
+            value: versions[index].key,
+            child: Row(
+              children: [
+                Icon(
+                  versions[index].key == selected.key
+                      ? Icons.check_circle_rounded
+                      : Icons.history_rounded,
+                  color: versions[index].key == selected.key
+                      ? AppColors.success
+                      : AppColors.muted,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        index == 0
+                            ? 'Version consolidée actuelle'
+                            : 'Version précédente ${versions.length - index}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        _materialVersionSubtitle(versions[index]),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.secondary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: AppColors.secondary.withValues(alpha: 0.22),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.auto_awesome_rounded,
+              color: AppColors.secondary,
+              size: 19,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isLatest
+                        ? 'Matériel consolidé'
+                        : 'Ancienne version conservée',
+                    style: const TextStyle(
+                      color: AppColors.secondary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '${_sessionLabel(selected.sessionCount)} · '
+                    '${versions.length} version${versions.length > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (versions.length > 1)
+              const Icon(Icons.expand_more_rounded, color: AppColors.secondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _materialVersionSubtitle(ChapterMaterialVersion version) {
+  final date = version.recording?.createdAt;
+  final sessionLabel = _sessionLabel(version.sessionCount);
+  return date == null
+      ? sessionLabel
+      : '$sessionLabel · ${DateFormat('d MMM yyyy', 'fr').format(date)}';
+}
+
+String _sessionLabel(int count) =>
+    '$count séance${count > 1 ? 's' : ''} intégrée${count > 1 ? 's' : ''}';
+
+class ChapterExercisesScreen extends ConsumerStatefulWidget {
   const ChapterExercisesScreen({
     super.key,
     required this.chapter,
@@ -231,197 +369,199 @@ class ChapterExercisesScreen extends ConsumerWidget {
   final String courseTitle;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(databaseProvider);
+  ConsumerState<ChapterExercisesScreen> createState() =>
+      _ChapterExercisesScreenState();
+}
+
+class _ChapterExercisesScreenState
+    extends ConsumerState<ChapterExercisesScreen> {
+  String? _selectedMaterialKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = ref
+        .watch(courseCatalogProvider)
+        .valueOrNull
+        ?.chapter(widget.chapter.clientUuid);
+    final versions =
+        progress?.materialVersions
+            .where((version) => version.exercise != null)
+            .toList() ??
+        const <ChapterMaterialVersion>[];
+    final selected =
+        versions
+            .where((version) => version.key == _selectedMaterialKey)
+            .firstOrNull ??
+        versions.firstOrNull;
+    final items = selected?.exercise == null
+        ? const <Map<String, dynamic>>[]
+        : _decodeList(selected!.exercise!.itemsJson);
     return Scaffold(
       appBar: AppBar(title: const Text('Exercices')),
-      body: StreamBuilder<List<Exercise>>(
-        stream:
-            (db.select(
-                  db.exercises,
-                )..where((e) => e.chapterClientUuid.equals(chapter.clientUuid)))
-                .watch(),
-        builder: (context, snapshot) {
-          final row = _latestByVersion(snapshot.data ?? const <Exercise>[]);
-          if (row == null) return const _PendingMaterial();
-          final items = _decodeList(row.itemsJson);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-            children: [
-              Text(courseTitle, style: const TextStyle(color: AppColors.muted)),
-              const SizedBox(height: 3),
-              Text(
-                chapter.title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 18),
-              for (var index = 0; index < items.length; index++) ...[
-                _ExerciseCard(index: index, item: items[index]),
+      body: selected?.exercise == null
+          ? const _PendingMaterial()
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              children: [
+                Text(
+                  widget.courseTitle,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  widget.chapter.title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 10),
+                _MaterialVersionPicker(
+                  versions: versions,
+                  selected: selected!,
+                  onSelected: (key) =>
+                      setState(() => _selectedMaterialKey = key),
+                ),
+                const SizedBox(height: 18),
+                for (var index = 0; index < items.length; index++) ...[
+                  _ExerciseCard(index: index, item: items[index]),
+                  const SizedBox(height: 10),
+                ],
               ],
-            ],
-          );
-        },
-      ),
+            ),
     );
   }
 }
 
 class _SummaryTab extends StatelessWidget {
   const _SummaryTab({
-    required this.db,
-    required this.chapterUuid,
+    required this.summary,
     required this.mastery,
     required this.onStartQuiz,
   });
 
-  final AppDatabase db;
-  final String chapterUuid;
+  final Summary? summary;
   final int mastery;
   final VoidCallback onStartQuiz;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Summary>>(
-      stream: (db.select(
-        db.summaries,
-      )..where((s) => s.chapterClientUuid.equals(chapterUuid))).watch(),
-      builder: (context, snapshot) {
-        final summary = _latestByVersion(snapshot.data ?? const <Summary>[]);
-        if (summary == null) return const _PendingMaterial();
-        final content = _StudyContent.fromSummary(summary);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            _SummarySection(
-              icon: Icons.fact_check_outlined,
-              iconColor: AppColors.primary,
-              title: 'Points essentiels',
-              child: Column(
-                children: [
-                  for (final point in content.keyPoints)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 9),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 7),
-                            child: CircleAvatar(
-                              radius: 2.5,
-                              backgroundColor: AppColors.ink,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              point,
-                              style: const TextStyle(height: 1.4),
-                            ),
-                          ),
-                        ],
+    final summary = this.summary;
+    if (summary == null) return const _PendingMaterial();
+    final content = _StudyContent.fromSummary(summary);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        _SummarySection(
+          icon: Icons.fact_check_outlined,
+          iconColor: AppColors.primary,
+          title: 'Points essentiels',
+          child: Column(
+            children: [
+              for (final point in content.keyPoints)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 7),
+                        child: CircleAvatar(
+                          radius: 2.5,
+                          backgroundColor: AppColors.ink,
+                        ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            _SummarySection(
-              icon: Icons.lightbulb_outline_rounded,
-              iconColor: AppColors.warning,
-              title: 'À retenir',
-              child: Text(
-                content.takeaway,
-                style: const TextStyle(height: 1.45),
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (content.body.isNotEmpty)
-              _SummarySection(
-                icon: Icons.notes_rounded,
-                iconColor: AppColors.secondary,
-                title: 'Résumé détaillé',
-                child: Text(content.body, style: const TextStyle(height: 1.5)),
-              ),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    _MasteryRing(value: mastery),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Maîtrise du chapitre',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 8),
-                          LinearProgressIndicator(
-                            value: mastery / 100,
-                            minHeight: 5,
-                            borderRadius: BorderRadius.circular(10),
-                            color: AppColors.secondary,
-                            backgroundColor: AppColors.outline,
-                          ),
-                        ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(point, style: const TextStyle(height: 1.4)),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _SummarySection(
+          icon: Icons.lightbulb_outline_rounded,
+          iconColor: AppColors.warning,
+          title: 'À retenir',
+          child: Text(content.takeaway, style: const TextStyle(height: 1.45)),
+        ),
+        const SizedBox(height: 10),
+        if (content.body.isNotEmpty)
+          _SummarySection(
+            icon: Icons.notes_rounded,
+            iconColor: AppColors.secondary,
+            title: 'Résumé détaillé',
+            child: Text(content.body, style: const TextStyle(height: 1.5)),
+          ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                _MasteryRing(value: mastery),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Maîtrise du chapitre',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: mastery / 100,
+                        minHeight: 5,
+                        borderRadius: BorderRadius.circular(10),
+                        color: AppColors.secondary,
+                        backgroundColor: AppColors.outline,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onStartQuiz,
-              icon: const Icon(Icons.rocket_launch_outlined),
-              label: const Text('Commencer le quiz'),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+        const SizedBox(height: 18),
+        FilledButton.icon(
+          onPressed: onStartQuiz,
+          icon: const Icon(Icons.rocket_launch_outlined),
+          label: const Text('Commencer le quiz'),
+        ),
+      ],
     );
   }
 }
 
 class _FlashcardsTab extends StatelessWidget {
-  const _FlashcardsTab({required this.db, required this.chapterUuid});
-  final AppDatabase db;
-  final String chapterUuid;
+  const _FlashcardsTab({required this.summary});
+  final Summary? summary;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Summary>>(
-      stream: (db.select(
-        db.summaries,
-      )..where((s) => s.chapterClientUuid.equals(chapterUuid))).watch(),
-      builder: (context, snapshot) {
-        final summary = _latestByVersion(snapshot.data ?? const <Summary>[]);
-        if (summary == null) return const _PendingMaterial();
-        final content = _StudyContent.fromSummary(summary);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            Text(
-              '${content.flashcards.length} fiches de révision',
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < content.flashcards.length; i++) ...[
-              _FlashcardTile(index: i, card: content.flashcards[i]),
-              const SizedBox(height: 10),
-            ],
-          ],
-        );
-      },
+    final summary = this.summary;
+    if (summary == null) return const _PendingMaterial();
+    final content = _StudyContent.fromSummary(summary);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        Text(
+          '${content.flashcards.length} fiches de révision',
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (var i = 0; i < content.flashcards.length; i++) ...[
+          _FlashcardTile(index: i, card: content.flashcards[i]),
+          const SizedBox(height: 10),
+        ],
+      ],
     );
   }
 }
@@ -431,120 +571,122 @@ class _QuizTab extends StatelessWidget {
     required this.db,
     required this.chapter,
     required this.courseTitle,
+    required this.quiz,
   });
 
   final AppDatabase db;
   final Chapter chapter;
   final String courseTitle;
+  final Quizze? quiz;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Quizze>>(
-      stream: (db.select(
-        db.quizzes,
-      )..where((q) => q.chapterClientUuid.equals(chapter.clientUuid))).watch(),
-      builder: (context, snapshot) {
-        final quiz = _latestByVersion(snapshot.data ?? const <Quizze>[]);
-        if (quiz == null) return const _PendingMaterial();
-        final questions = _decodeList(quiz.questionsJson);
-        return StreamBuilder<List<QuizAttempt>>(
-          stream:
-              (db.select(db.quizAttempts)
-                    ..where(
-                      (a) => a.chapterClientUuid.equals(chapter.clientUuid),
-                    )
-                    ..orderBy([(a) => OrderingTerm.desc(a.takenAt)]))
-                  .watch(),
-          builder: (context, attemptSnapshot) {
-            final attempts = attemptSnapshot.data ?? const <QuizAttempt>[];
-            final latest = attempts.firstOrNull;
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 62,
-                          height: 62,
-                          decoration: BoxDecoration(
-                            color: AppColors.warning.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.quiz_outlined,
-                            color: AppColors.warning,
-                            size: 34,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          '${questions.length} questions',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Testez votre compréhension et identifiez les notions à revoir.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.muted, height: 1.4),
-                        ),
-                      ],
+    final quiz = this.quiz;
+    if (quiz == null) return const _PendingMaterial();
+    final questions = _decodeList(quiz.questionsJson);
+    return StreamBuilder<List<QuizAttempt>>(
+      stream:
+          (db.select(db.quizAttempts)
+                ..where((attempt) {
+                  final inChapter = attempt.chapterClientUuid.equals(
+                    chapter.clientUuid,
+                  );
+                  final quizServerId = quiz.serverId;
+                  return quizServerId == null
+                      ? inChapter
+                      : inChapter & attempt.quizServerId.equals(quizServerId);
+                })
+                ..orderBy([(a) => OrderingTerm.desc(a.takenAt)]))
+              .watch(),
+      builder: (context, attemptSnapshot) {
+        final attempts = attemptSnapshot.data ?? const <QuizAttempt>[];
+        final latest = attempts.firstOrNull;
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.quiz_outlined,
+                        color: AppColors.warning,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '${questions.length} questions',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Testez votre compréhension et identifiez les notions à revoir.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (latest != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: _MasteryRing(
+                    value: latest.total == 0
+                        ? 0
+                        : ((latest.score / latest.total) * 100).round(),
+                    size: 48,
+                  ),
+                  title: const Text(
+                    'Dernier résultat',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text('${latest.score} / ${latest.total}'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => QuizResultScreen(
+                        chapter: chapter,
+                        courseTitle: courseTitle,
+                        attempt: latest,
+                      ),
                     ),
                   ),
                 ),
-                if (latest != null) ...[
-                  const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      leading: _MasteryRing(
-                        value: latest.total == 0
-                            ? 0
-                            : ((latest.score / latest.total) * 100).round(),
-                        size: 48,
-                      ),
-                      title: const Text(
-                        'Dernier résultat',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text('${latest.score} / ${latest.total}'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => QuizResultScreen(
-                            chapter: chapter,
-                            courseTitle: courseTitle,
-                            attempt: latest,
-                          ),
+              ),
+            ],
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: questions.isEmpty
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => QuizRunnerScreen(
+                          chapter: chapter,
+                          courseTitle: courseTitle,
+                          quiz: quiz,
+                          questions: questions,
                         ),
                       ),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                FilledButton.icon(
-                  onPressed: questions.isEmpty
-                      ? null
-                      : () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => QuizRunnerScreen(
-                              chapter: chapter,
-                              courseTitle: courseTitle,
-                              quiz: quiz,
-                              questions: questions,
-                            ),
-                          ),
-                        ),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: Text(
-                    latest == null ? 'Commencer le quiz' : 'Refaire le quiz',
-                  ),
-                ),
-              ],
-            );
-          },
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(
+                latest == null ? 'Commencer le quiz' : 'Refaire le quiz',
+              ),
+            ),
+          ],
         );
       },
     );
@@ -1431,18 +1573,6 @@ List<_TopicScore> _topicScores(List<Map<String, dynamic>> answers) {
     for (final entry in totals.entries)
       _TopicScore(entry.key, entry.value.$1, entry.value.$2),
   ];
-}
-
-T? _latestByVersion<T>(List<T> rows) {
-  if (rows.isEmpty) return null;
-  int version(T row) => switch (row) {
-    Summary value => value.syncVersion,
-    Exercise value => value.syncVersion,
-    Quizze value => value.syncVersion,
-    _ => 0,
-  };
-  rows.sort((a, b) => version(b).compareTo(version(a)));
-  return rows.first;
 }
 
 List<Map<String, dynamic>> _decodeList(String value) {

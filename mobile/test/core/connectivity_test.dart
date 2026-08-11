@@ -35,4 +35,22 @@ void main() {
       expect(probes, 1);
     },
   );
+
+  test(
+    'does not report online when Wi-Fi exists but the API is unreachable',
+    () async {
+      var probes = 0;
+
+      final online = await ConnectivityService.checkOnline(
+        networkCheck: () async => const [ConnectivityResult.wifi],
+        apiProbe: () async {
+          probes += 1;
+          return false;
+        },
+      );
+
+      expect(online, isFalse);
+      expect(probes, 1);
+    },
+  );
 }

@@ -57,9 +57,11 @@ impl CloudflareAgendaConfig {
         let token = std::env::var("CF_AI_TOKEN")
             .ok()
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow::anyhow!(
-                "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read)"
-            ))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "CF_AI_TOKEN must be set to a non-empty Cloudflare API token (Workers AI:Read)"
+                )
+            })?;
         let model = std::env::var("CF_GEMMA_MODEL")
             .ok()
             .filter(|s| !s.is_empty())
@@ -100,7 +102,11 @@ impl CloudflareAgendaParser {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("reqwest client builder");
-        Self { cfg, http, settings: None }
+        Self {
+            cfg,
+            http,
+            settings: None,
+        }
     }
 
     async fn pick_model(&self) -> String {
@@ -166,7 +172,10 @@ impl CloudflareAgendaParser {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Cloudflare Gemma returned HTTP {status}: {}", text.chars().take(500).collect::<String>());
+            anyhow::bail!(
+                "Cloudflare Gemma returned HTTP {status}: {}",
+                text.chars().take(500).collect::<String>()
+            );
         }
 
         let parsed: ChatResponse = resp.json().await?;
@@ -220,7 +229,8 @@ impl AgendaParser for CloudflareAgendaParser {
                 }
             }
         }
-        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("gemma agenda call failed without an error")))
+        Err(last_err
+            .unwrap_or_else(|| anyhow::anyhow!("gemma agenda call failed without an error")))
     }
 }
 
@@ -267,14 +277,14 @@ fn parse_drafts(raw: &str) -> anyhow::Result<Vec<AgendaItemDraft>> {
             return Ok(parsed.items);
         }
     }
-    anyhow::bail!("Gemma response did not contain parseable JSON: {}", raw.chars().take(200).collect::<String>())
+    anyhow::bail!(
+        "Gemma response did not contain parseable JSON: {}",
+        raw.chars().take(200).collect::<String>()
+    )
 }
 
 fn trim_items(items: Vec<AgendaItemDraft>) -> Vec<AgendaItemDraft> {
-    let mut out: Vec<AgendaItemDraft> = items
-        .into_iter()
-        .filter_map(|d| d.sanitized())
-        .collect();
+    let mut out: Vec<AgendaItemDraft> = items.into_iter().filter_map(|d| d.sanitized()).collect();
     if out.len() > MAX_ITEMS_PER_SCAN {
         tracing::warn!(
             items = out.len(),
@@ -363,8 +373,7 @@ fn extract_json_object(s: &str) -> Option<String> {
 }
 
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= input.len() {

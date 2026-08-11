@@ -54,8 +54,10 @@ abstract final class BackgroundSyncScheduler {
     );
   }
 
-  /// Queues a single retry that remains dormant until Android detects a
-  /// network. Re-registering replaces the pending retry instead of stacking.
+  /// Queues an immediate durable drain of the local sync queue. Android keeps
+  /// it across process death and waits for a validated network. `update` maps
+  /// to append-or-replace for one-off work, so a new recording never cancels a
+  /// worker that is already uploading another recording.
   static Future<void> enqueueWhenOnline() async {
     if (!Platform.isAndroid) return;
     await initialize();
@@ -63,10 +65,20 @@ abstract final class BackgroundSyncScheduler {
       _networkRetryUniqueName,
       backgroundSyncTask,
       constraints: Constraints(networkType: NetworkType.connected),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
+      existingWorkPolicy: ExistingWorkPolicy.update,
       backoffPolicy: BackoffPolicy.exponential,
-      backoffPolicyDelay: const Duration(minutes: 1),
+      backoffPolicyDelay: const Duration(seconds: 15),
       tag: _syncTaskTag,
+      expedited: true,
+      outOfQuotaPolicy: OutOfQuotaPolicy.runAsNonExpeditedWorkRequest,
+      foregroundServiceConfig: ForegroundServiceConfig(
+        notificationTitle: 'BuddyWize synchronise votre cours',
+        notificationText: 'Envoi et traitement en cours…',
+        notificationChannelId: 'buddywize_processing',
+        notificationChannelName: 'Traitement des cours',
+        notificationId: 4102,
+        foregroundServiceType: ForegroundServiceType.dataSync,
+      ),
     );
   }
 
@@ -88,6 +100,11 @@ abstract final class BackgroundSyncRunner {
       if (!authenticated) return true;
       if (!await ConnectivityService.checkOnline()) return false;
 
+      await Workmanager().reportProgress(const {
+        'stage': 'connecting',
+        'progress': 1,
+      });
+
       db = AppDatabase();
       engine = SyncEngine(
         db: db,
@@ -99,8 +116,14 @@ abstract final class BackgroundSyncRunner {
 
       // A 401 may rotate or invalidate tokens during the background pass.
       await AuthSessionStore.persist(api);
+      final pending = await engine.hasActiveRecordingWork();
+      await Workmanager().reportProgress({
+        'stage': pending ? 'processing' : 'complete',
+        'progress': pending ? 75 : 100,
+      });
       return switch (engine.currentPhase) {
         SyncPhase.error || SyncPhase.offline => false,
+        _ when pending => false,
         _ => true,
       };
     } catch (_) {

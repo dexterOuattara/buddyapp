@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:http/http.dart' as http;
 
 import '../api/api_client.dart';
 import '../core/config.dart';
@@ -26,7 +28,7 @@ class SyncEngine {
     this.persistSession,
   }) {
     if (enableForegroundTimer) {
-      _timer = Timer.periodic(Config.syncPollInterval, (_) => sync());
+      _scheduleNextPoll(Config.syncPollInterval);
     }
   }
 
@@ -42,14 +44,21 @@ class SyncEngine {
   SyncPhase currentPhase = SyncPhase.idle;
 
   bool _running = false;
+  bool _rerunRequested = false;
   Timer? _timer;
   String? _leaseValue;
+  String? _leaseOwner;
 
   static const _leaseKey = 'sync.lease';
-  static const _leaseLifetime = Duration(minutes: 20);
+  static const _leaseLifetime = Duration(minutes: 3);
+  static const _activePollInterval = Duration(seconds: 2);
 
   void _setPhase(SyncPhase p) {
     currentPhase = p;
+    developer.log(
+      'phase=${p.name}${_lastError == null ? '' : ' error=$_lastError'}',
+      name: 'buddywize.sync',
+    );
     _phase.add(p);
   }
 
@@ -60,11 +69,36 @@ class SyncEngine {
     _phase.close();
   }
 
+  void _scheduleNextPoll(Duration delay) {
+    if (!enableForegroundTimer) return;
+    _timer?.cancel();
+    _timer = Timer(delay, () => unawaited(sync()));
+  }
+
   /// Full sync pass: push local changes, then pull remote changes.
   Future<void> sync({bool force = false}) async {
-    if (_running) return;
+    if (_running) {
+      // Do not lose a connectivity/app-resume/manual trigger while a pass is
+      // already active. One extra pass is enough to observe every DB change.
+      _rerunRequested = true;
+      return;
+    }
     _running = true;
+    try {
+      do {
+        _rerunRequested = false;
+        await _syncOnce(force: force);
+      } while (_rerunRequested);
+    } finally {
+      _running = false;
+      final active = await hasActiveRecordingWork();
+      _scheduleNextPoll(active ? _activePollInterval : Config.syncPollInterval);
+    }
+  }
+
+  Future<void> _syncOnce({required bool force}) async {
     var leaseAcquired = false;
+    _lastError = null;
     try {
       if (!api.isAuthenticated) {
         _setPhase(SyncPhase.idle);
@@ -87,16 +121,31 @@ class SyncEngine {
       }
       _setPhase(SyncPhase.pushing);
       await _pushStructure();
-      await _pushRecordings();
+      final recordingsPushed = await _pushRecordings();
       await _pushQuizAttempts();
       _setPhase(SyncPhase.pulling);
       await _pullStructure();
       await _pullRecordings();
       await _pullStudy();
       await _pullQuizAttempts();
-      _setPhase(SyncPhase.done);
-    } on SocketException {
+      if (recordingsPushed) {
+        _setPhase(SyncPhase.done);
+      } else {
+        _setPhase(SyncPhase.error);
+        _lastError = 'Des enregistrements attendent une nouvelle tentative.';
+        await _queueBackgroundRetry();
+      }
+    } on SocketException catch (e) {
       _setPhase(SyncPhase.offline);
+      _lastError = e.message;
+      await _queueBackgroundRetry();
+    } on TimeoutException catch (e) {
+      _setPhase(SyncPhase.offline);
+      _lastError = e.message ?? 'Le serveur ne répond pas.';
+      await _queueBackgroundRetry();
+    } on http.ClientException catch (e) {
+      _setPhase(SyncPhase.offline);
+      _lastError = e.message;
       await _queueBackgroundRetry();
     } on ApiException catch (e) {
       _setPhase(SyncPhase.error);
@@ -112,8 +161,19 @@ class SyncEngine {
         // token persistence was temporarily unavailable.
       }
       if (leaseAcquired) await _releaseLease();
-      _running = false;
     }
+  }
+
+  /// Whether the device still has upload or server-side processing work.
+  /// Used by both the adaptive foreground poller and Android WorkManager.
+  Future<bool> hasActiveRecordingWork() async {
+    final row = await db
+        .customSelect(
+          "SELECT EXISTS(SELECT 1 FROM recordings WHERE status IN "
+          "('pending_sync', 'uploading', 'synced', 'processing')) AS active",
+        )
+        .getSingle();
+    return row.read<int>('active') == 1;
   }
 
   String? _lastError;
@@ -131,7 +191,8 @@ class SyncEngine {
   Future<bool> _acquireLease() async {
     var acquired = false;
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final value = '$now:${identityHashCode(this)}';
+    final owner = _leaseOwner ??= '${identityHashCode(this)}';
+    final value = '$now:$owner';
     await db.transaction(() async {
       final current = await (db.select(
         db.meta,
@@ -151,6 +212,19 @@ class SyncEngine {
       _leaseValue = value;
     });
     return acquired;
+  }
+
+  Future<void> _renewLease() async {
+    final previous = _leaseValue;
+    final owner = _leaseOwner;
+    if (previous == null || owner == null) return;
+    final next = '${DateTime.now().toUtc().millisecondsSinceEpoch}:$owner';
+    final changed =
+        await (db.update(db.meta)..where(
+              (row) => row.key.equals(_leaseKey) & row.value.equals(previous),
+            ))
+            .write(MetaCompanion(value: Value(next)));
+    if (changed == 1) _leaseValue = next;
   }
 
   Future<void> _releaseLease() async {
@@ -303,21 +377,49 @@ class SyncEngine {
   }
 
   /// Resumable, chunked upload of recordings that are ready to leave the device.
-  Future<void> _pushRecordings() async {
-    final pending = await (db.select(
-      db.recordings,
-    )..where((t) => t.status.isIn(['pending_sync', 'uploading']))).get();
+  Future<bool> _pushRecordings() async {
+    final now = DateTime.now();
+    final pending = await (db.select(db.recordings)..where(
+      (t) =>
+          t.status.isIn(['pending_sync', 'uploading']) &
+          // Respect the exponential backoff schedule: skip recordings whose
+          // nextRetryAt is still in the future. Without this filter the 2-second
+          // adaptive poll re-attempts every failed upload immediately, creating
+          // a tight retry storm that hammers the server.
+          (t.nextRetryAt.isNull() | t.nextRetryAt.isSmallerOrEqualValue(now)),
+    )).get();
 
+    var allPushed = true;
     for (final rec in pending) {
       final file = File(rec.localPath);
       if (!await file.exists()) {
-        await (db.update(db.recordings)..where((t) => t.id.equals(rec.id)))
-            .write(const RecordingsCompanion(status: Value('failed')));
+        await (db.update(
+          db.recordings,
+        )..where((t) => t.id.equals(rec.id))).write(
+          const RecordingsCompanion(
+            status: Value('failed'),
+            pipelineStage: Value('failed'),
+            statusMessage: Value('Fichier audio introuvable sur cet appareil'),
+            retryable: Value(false),
+            errorCode: Value('local_file_missing'),
+          ),
+        );
         continue;
       }
 
       await (db.update(db.recordings)..where((t) => t.id.equals(rec.id))).write(
-        const RecordingsCompanion(status: Value('uploading')),
+        RecordingsCompanion(
+          status: const Value('uploading'),
+          pipelineStage: const Value('uploading'),
+          progressPercent: const Value(5),
+          stageCurrent: Value(rec.uploadedBytes),
+          stageTotal: Value(await file.length()),
+          statusMessage: const Value('Envoi sécurisé du cours…'),
+          retryable: const Value(true),
+          errorCode: const Value(null),
+          nextRetryAt: const Value(null),
+          lastProgressAt: Value(DateTime.now()),
+        ),
       );
 
       try {
@@ -329,32 +431,148 @@ class SyncEngine {
         });
         final uploadId = session['upload_id'] as String;
         var offset = _asInt(session['offset']);
-
-        final stream = file.openRead(offset);
-        var chunkStart = offset;
-        await for (final chunk in stream) {
-          // openRead yields sequential slices; only send from the resume offset.
-          final res = await api.uploadChunk(uploadId, chunkStart, chunk);
-          chunkStart += chunk.length;
-          offset = _asInt(res['offset']);
-          await (db.update(db.recordings)..where((t) => t.id.equals(rec.id)))
-              .write(RecordingsCompanion(uploadedBytes: Value(offset)));
+        final fileSize = await file.length();
+        late final Map<String, dynamic> completed;
+        if (session['completed'] == true) {
+          // The server finalized this upload before the app persisted the
+          // response (for example, the process was killed at that instant).
+          // Reuse the authoritative recording instead of sending audio again.
+          final existing = session['recording'];
+          completed = existing is Map<String, dynamic>
+              ? existing
+              : Map<String, dynamic>.from(existing as Map);
+          offset = fileSize;
+          developer.log(
+            'recording=${rec.clientUuid} upload already completed on server',
+            name: 'buddywize.sync',
+          );
+        } else {
+          if (offset < 0 || offset > fileSize) {
+            throw StateError(
+              'Invalid server upload offset $offset for $fileSize bytes',
+            );
+          }
+          final stream = file.openRead(offset);
+          var chunkStart = offset;
+          await for (final chunk in stream) {
+            // openRead yields sequential slices; only send from the resume offset.
+            final res = await api.uploadChunk(uploadId, chunkStart, chunk);
+            chunkStart += chunk.length;
+            offset = _asInt(res['offset']);
+            final overallProgress = fileSize == 0
+                ? 40
+                : (5 + (35 * offset / fileSize)).round().clamp(5, 40);
+            await (db.update(
+              db.recordings,
+            )..where((t) => t.id.equals(rec.id))).write(
+              RecordingsCompanion(
+                uploadedBytes: Value(offset),
+                progressPercent: Value(overallProgress),
+                stageCurrent: Value(offset),
+                stageTotal: Value(fileSize),
+                statusMessage: Value(
+                  'Envoi ${fileSize == 0 ? 100 : ((offset / fileSize) * 100).round().clamp(0, 100)} %',
+                ),
+                lastProgressAt: Value(DateTime.now()),
+              ),
+            );
+            developer.log(
+              'recording=${rec.clientUuid} upload=$offset/$fileSize',
+              name: 'buddywize.sync',
+            );
+            await _renewLease();
+          }
+          completed = await api.completeUpload(uploadId);
         }
-
-        final completed = await api.completeUpload(uploadId);
+        final serverStatus = completed['status'] as String? ?? 'uploaded';
         await (db.update(
           db.recordings,
         )..where((t) => t.id.equals(rec.id))).write(
           RecordingsCompanion(
-            status: const Value('processing'),
+            status: Value(_mapServerStatus(serverStatus)),
+            uploadedBytes: Value(fileSize),
             serverRecordingId: Value(completed['id'] as String?),
+            pipelineStage: Value(
+              completed['pipeline_stage'] as String? ?? 'queued',
+            ),
+            progressPercent: Value(
+              _asInt(completed['progress_percent']).clamp(40, 100),
+            ),
+            stageCurrent: Value(_asNullableInt(completed['stage_current'])),
+            stageTotal: Value(_asNullableInt(completed['stage_total'])),
+            statusMessage: Value(
+              completed['status_message'] as String? ??
+                  'Audio reçu, traitement programmé',
+            ),
+            retryable: Value(completed['retryable'] as bool? ?? true),
+            attemptCount: Value(_asInt(completed['attempt_count'])),
+            nextRetryAt: Value(_asDate(completed['next_retry_at'])),
+            errorCode: Value(completed['error_code'] as String?),
+            stageStartedAt: Value(_asDate(completed['stage_started_at'])),
+            lastProgressAt: Value(_asDate(completed['last_progress_at'])),
           ),
         );
-      } on ApiException {
-        await (db.update(db.recordings)..where((t) => t.id.equals(rec.id)))
-            .write(const RecordingsCompanion(status: Value('pending_sync')));
+      } on ApiException catch (e) {
+        allPushed = false;
+        await (db.update(
+          db.recordings,
+        )..where((t) => t.id.equals(rec.id))).write(
+          RecordingsCompanion(
+            status: const Value('pending_sync'),
+            pipelineStage: const Value('waiting_network'),
+            statusMessage: const Value(
+              'Envoi interrompu — nouvelle tentative automatique',
+            ),
+            retryable: const Value(true),
+            errorCode: Value('api_${e.statusCode}'),
+            nextRetryAt: Value(DateTime.now().add(const Duration(seconds: 15))),
+          ),
+        );
+      } on TimeoutException catch (_) {
+        allPushed = false;
+        await _markUploadForRetry(
+          rec.id,
+          'Le serveur met trop de temps à répondre',
+        );
+      } on SocketException catch (_) {
+        allPushed = false;
+        await _markUploadForRetry(rec.id, 'Connexion perdue pendant l’envoi');
+      } on http.ClientException catch (_) {
+        allPushed = false;
+        await _markUploadForRetry(
+          rec.id,
+          'Connexion interrompue pendant l’envoi',
+        );
+      } catch (error, stackTrace) {
+        // Never leave an upload visually frozen because of an unexpected
+        // resume/file-state mismatch. Keep it retryable and observable.
+        allPushed = false;
+        developer.log(
+          'recording=${rec.clientUuid} upload client failure',
+          name: 'buddywize.sync',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        await _markUploadForRetry(
+          rec.id,
+          'La reprise de l’envoi doit être renégociée',
+        );
       }
     }
+    return allPushed;
+  }
+
+  Future<void> _markUploadForRetry(int id, String message) async {
+    await (db.update(db.recordings)..where((t) => t.id.equals(id))).write(
+      RecordingsCompanion(
+        status: const Value('pending_sync'),
+        pipelineStage: const Value('waiting_network'),
+        statusMessage: Value('$message — reprise automatique prévue'),
+        retryable: const Value(true),
+        errorCode: const Value('network_interrupted'),
+        nextRetryAt: Value(DateTime.now().add(const Duration(seconds: 15))),
+      ),
+    );
   }
 
   Future<void> _pushQuizAttempts() async {
@@ -510,7 +728,23 @@ class SyncEngine {
         RecordingsCompanion(
           status: Value(_mapServerStatus(status)),
           serverRecordingId: Value(item['id'] as String?),
+          pipelineStage: Value(item['pipeline_stage'] as String? ?? status),
+          progressPercent: Value(_asInt(item['progress_percent'])),
+          stageCurrent: Value(_asNullableInt(item['stage_current'])),
+          stageTotal: Value(_asNullableInt(item['stage_total'])),
+          statusMessage: Value(item['status_message'] as String?),
+          retryable: Value(item['retryable'] as bool? ?? true),
+          attemptCount: Value(_asInt(item['attempt_count'])),
+          nextRetryAt: Value(_asDate(item['next_retry_at'])),
+          errorCode: Value(item['error_code'] as String?),
+          stageStartedAt: Value(_asDate(item['stage_started_at'])),
+          lastProgressAt: Value(_asDate(item['last_progress_at'])),
         ),
+      );
+      developer.log(
+        'recording=$clientUuid stage=${item['pipeline_stage']} '
+        'progress=${item['progress_percent']} status=$status',
+        name: 'buddywize.sync',
       );
       await _maybeBumpCursor('recordings', _asInt(item['sync_version']));
     });
@@ -566,6 +800,7 @@ class SyncEngine {
       final companion = SummariesCompanion(
         serverId: Value(serverId),
         recordingServerId: Value(item['recording_id'] as String?),
+        generationId: Value(item['generation_id'] as String?),
         chapterClientUuid: Value(chapterUuid),
         contentMd: Value(item['content_md'] as String),
         structuredJson: Value(
@@ -601,6 +836,7 @@ class SyncEngine {
       final companion = ExercisesCompanion(
         serverId: Value(serverId),
         recordingServerId: Value(item['recording_id'] as String?),
+        generationId: Value(item['generation_id'] as String?),
         chapterClientUuid: Value(chapterUuid),
         itemsJson: Value(jsonEncode(item['items'])),
         status: const Value('approved'),
@@ -631,6 +867,7 @@ class SyncEngine {
       final companion = QuizzesCompanion(
         serverId: Value(serverId),
         recordingServerId: Value(item['recording_id'] as String?),
+        generationId: Value(item['generation_id'] as String?),
         chapterClientUuid: Value(chapterUuid),
         questionsJson: Value(jsonEncode(item['questions'])),
         status: const Value('approved'),

@@ -21,6 +21,7 @@ WORKDIR /app
 # shells out to when reading audio that isn't a format ctranslate2 can decode itself).
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     python3 python3-pip python3-venv \
     ffmpeg \
     libgomp1 \

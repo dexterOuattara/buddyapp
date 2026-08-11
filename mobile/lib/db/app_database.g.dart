@@ -2919,6 +2919,136 @@ class $RecordingsTable extends Recordings
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _pipelineStageMeta = const VerificationMeta(
+    'pipelineStage',
+  );
+  @override
+  late final GeneratedColumn<String> pipelineStage = GeneratedColumn<String>(
+    'pipeline_stage',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('saved_local'),
+  );
+  static const VerificationMeta _progressPercentMeta = const VerificationMeta(
+    'progressPercent',
+  );
+  @override
+  late final GeneratedColumn<int> progressPercent = GeneratedColumn<int>(
+    'progress_percent',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _stageCurrentMeta = const VerificationMeta(
+    'stageCurrent',
+  );
+  @override
+  late final GeneratedColumn<int> stageCurrent = GeneratedColumn<int>(
+    'stage_current',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stageTotalMeta = const VerificationMeta(
+    'stageTotal',
+  );
+  @override
+  late final GeneratedColumn<int> stageTotal = GeneratedColumn<int>(
+    'stage_total',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMessageMeta = const VerificationMeta(
+    'statusMessage',
+  );
+  @override
+  late final GeneratedColumn<String> statusMessage = GeneratedColumn<String>(
+    'status_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _retryableMeta = const VerificationMeta(
+    'retryable',
+  );
+  @override
+  late final GeneratedColumn<bool> retryable = GeneratedColumn<bool>(
+    'retryable',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("retryable" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _attemptCountMeta = const VerificationMeta(
+    'attemptCount',
+  );
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+    'attempt_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextRetryAtMeta = const VerificationMeta(
+    'nextRetryAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+    'next_retry_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorCodeMeta = const VerificationMeta(
+    'errorCode',
+  );
+  @override
+  late final GeneratedColumn<String> errorCode = GeneratedColumn<String>(
+    'error_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stageStartedAtMeta = const VerificationMeta(
+    'stageStartedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> stageStartedAt =
+      GeneratedColumn<DateTime>(
+        'stage_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastProgressAtMeta = const VerificationMeta(
+    'lastProgressAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastProgressAt =
+      GeneratedColumn<DateTime>(
+        'last_progress_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2942,6 +3072,17 @@ class $RecordingsTable extends Recordings
     status,
     uploadedBytes,
     serverRecordingId,
+    pipelineStage,
+    progressPercent,
+    stageCurrent,
+    stageTotal,
+    statusMessage,
+    retryable,
+    attemptCount,
+    nextRetryAt,
+    errorCode,
+    stageStartedAt,
+    lastProgressAt,
     createdAt,
   ];
   @override
@@ -3025,6 +3166,96 @@ class $RecordingsTable extends Recordings
         ),
       );
     }
+    if (data.containsKey('pipeline_stage')) {
+      context.handle(
+        _pipelineStageMeta,
+        pipelineStage.isAcceptableOrUnknown(
+          data['pipeline_stage']!,
+          _pipelineStageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('progress_percent')) {
+      context.handle(
+        _progressPercentMeta,
+        progressPercent.isAcceptableOrUnknown(
+          data['progress_percent']!,
+          _progressPercentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stage_current')) {
+      context.handle(
+        _stageCurrentMeta,
+        stageCurrent.isAcceptableOrUnknown(
+          data['stage_current']!,
+          _stageCurrentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stage_total')) {
+      context.handle(
+        _stageTotalMeta,
+        stageTotal.isAcceptableOrUnknown(data['stage_total']!, _stageTotalMeta),
+      );
+    }
+    if (data.containsKey('status_message')) {
+      context.handle(
+        _statusMessageMeta,
+        statusMessage.isAcceptableOrUnknown(
+          data['status_message']!,
+          _statusMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('retryable')) {
+      context.handle(
+        _retryableMeta,
+        retryable.isAcceptableOrUnknown(data['retryable']!, _retryableMeta),
+      );
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+        _attemptCountMeta,
+        attemptCount.isAcceptableOrUnknown(
+          data['attempt_count']!,
+          _attemptCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+        _nextRetryAtMeta,
+        nextRetryAt.isAcceptableOrUnknown(
+          data['next_retry_at']!,
+          _nextRetryAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('error_code')) {
+      context.handle(
+        _errorCodeMeta,
+        errorCode.isAcceptableOrUnknown(data['error_code']!, _errorCodeMeta),
+      );
+    }
+    if (data.containsKey('stage_started_at')) {
+      context.handle(
+        _stageStartedAtMeta,
+        stageStartedAt.isAcceptableOrUnknown(
+          data['stage_started_at']!,
+          _stageStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_progress_at')) {
+      context.handle(
+        _lastProgressAtMeta,
+        lastProgressAt.isAcceptableOrUnknown(
+          data['last_progress_at']!,
+          _lastProgressAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3076,6 +3307,50 @@ class $RecordingsTable extends Recordings
         DriftSqlType.string,
         data['${effectivePrefix}server_recording_id'],
       ),
+      pipelineStage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pipeline_stage'],
+      )!,
+      progressPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}progress_percent'],
+      )!,
+      stageCurrent: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}stage_current'],
+      ),
+      stageTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}stage_total'],
+      ),
+      statusMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status_message'],
+      ),
+      retryable: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}retryable'],
+      )!,
+      attemptCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt_count'],
+      )!,
+      nextRetryAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_retry_at'],
+      ),
+      errorCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_code'],
+      ),
+      stageStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}stage_started_at'],
+      ),
+      lastProgressAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_progress_at'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3101,6 +3376,17 @@ class Recording extends DataClass implements Insertable<Recording> {
   final String status;
   final int uploadedBytes;
   final String? serverRecordingId;
+  final String pipelineStage;
+  final int progressPercent;
+  final int? stageCurrent;
+  final int? stageTotal;
+  final String? statusMessage;
+  final bool retryable;
+  final int attemptCount;
+  final DateTime? nextRetryAt;
+  final String? errorCode;
+  final DateTime? stageStartedAt;
+  final DateTime? lastProgressAt;
   final DateTime createdAt;
   const Recording({
     required this.id,
@@ -3112,6 +3398,17 @@ class Recording extends DataClass implements Insertable<Recording> {
     required this.status,
     required this.uploadedBytes,
     this.serverRecordingId,
+    required this.pipelineStage,
+    required this.progressPercent,
+    this.stageCurrent,
+    this.stageTotal,
+    this.statusMessage,
+    required this.retryable,
+    required this.attemptCount,
+    this.nextRetryAt,
+    this.errorCode,
+    this.stageStartedAt,
+    this.lastProgressAt,
     required this.createdAt,
   });
   @override
@@ -3131,6 +3428,31 @@ class Recording extends DataClass implements Insertable<Recording> {
     map['uploaded_bytes'] = Variable<int>(uploadedBytes);
     if (!nullToAbsent || serverRecordingId != null) {
       map['server_recording_id'] = Variable<String>(serverRecordingId);
+    }
+    map['pipeline_stage'] = Variable<String>(pipelineStage);
+    map['progress_percent'] = Variable<int>(progressPercent);
+    if (!nullToAbsent || stageCurrent != null) {
+      map['stage_current'] = Variable<int>(stageCurrent);
+    }
+    if (!nullToAbsent || stageTotal != null) {
+      map['stage_total'] = Variable<int>(stageTotal);
+    }
+    if (!nullToAbsent || statusMessage != null) {
+      map['status_message'] = Variable<String>(statusMessage);
+    }
+    map['retryable'] = Variable<bool>(retryable);
+    map['attempt_count'] = Variable<int>(attemptCount);
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    if (!nullToAbsent || errorCode != null) {
+      map['error_code'] = Variable<String>(errorCode);
+    }
+    if (!nullToAbsent || stageStartedAt != null) {
+      map['stage_started_at'] = Variable<DateTime>(stageStartedAt);
+    }
+    if (!nullToAbsent || lastProgressAt != null) {
+      map['last_progress_at'] = Variable<DateTime>(lastProgressAt);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -3153,6 +3475,31 @@ class Recording extends DataClass implements Insertable<Recording> {
       serverRecordingId: serverRecordingId == null && nullToAbsent
           ? const Value.absent()
           : Value(serverRecordingId),
+      pipelineStage: Value(pipelineStage),
+      progressPercent: Value(progressPercent),
+      stageCurrent: stageCurrent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stageCurrent),
+      stageTotal: stageTotal == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stageTotal),
+      statusMessage: statusMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statusMessage),
+      retryable: Value(retryable),
+      attemptCount: Value(attemptCount),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+      errorCode: errorCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorCode),
+      stageStartedAt: stageStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stageStartedAt),
+      lastProgressAt: lastProgressAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastProgressAt),
       createdAt: Value(createdAt),
     );
   }
@@ -3174,6 +3521,17 @@ class Recording extends DataClass implements Insertable<Recording> {
       serverRecordingId: serializer.fromJson<String?>(
         json['serverRecordingId'],
       ),
+      pipelineStage: serializer.fromJson<String>(json['pipelineStage']),
+      progressPercent: serializer.fromJson<int>(json['progressPercent']),
+      stageCurrent: serializer.fromJson<int?>(json['stageCurrent']),
+      stageTotal: serializer.fromJson<int?>(json['stageTotal']),
+      statusMessage: serializer.fromJson<String?>(json['statusMessage']),
+      retryable: serializer.fromJson<bool>(json['retryable']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      errorCode: serializer.fromJson<String?>(json['errorCode']),
+      stageStartedAt: serializer.fromJson<DateTime?>(json['stageStartedAt']),
+      lastProgressAt: serializer.fromJson<DateTime?>(json['lastProgressAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -3190,6 +3548,17 @@ class Recording extends DataClass implements Insertable<Recording> {
       'status': serializer.toJson<String>(status),
       'uploadedBytes': serializer.toJson<int>(uploadedBytes),
       'serverRecordingId': serializer.toJson<String?>(serverRecordingId),
+      'pipelineStage': serializer.toJson<String>(pipelineStage),
+      'progressPercent': serializer.toJson<int>(progressPercent),
+      'stageCurrent': serializer.toJson<int?>(stageCurrent),
+      'stageTotal': serializer.toJson<int?>(stageTotal),
+      'statusMessage': serializer.toJson<String?>(statusMessage),
+      'retryable': serializer.toJson<bool>(retryable),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'errorCode': serializer.toJson<String?>(errorCode),
+      'stageStartedAt': serializer.toJson<DateTime?>(stageStartedAt),
+      'lastProgressAt': serializer.toJson<DateTime?>(lastProgressAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -3204,6 +3573,17 @@ class Recording extends DataClass implements Insertable<Recording> {
     String? status,
     int? uploadedBytes,
     Value<String?> serverRecordingId = const Value.absent(),
+    String? pipelineStage,
+    int? progressPercent,
+    Value<int?> stageCurrent = const Value.absent(),
+    Value<int?> stageTotal = const Value.absent(),
+    Value<String?> statusMessage = const Value.absent(),
+    bool? retryable,
+    int? attemptCount,
+    Value<DateTime?> nextRetryAt = const Value.absent(),
+    Value<String?> errorCode = const Value.absent(),
+    Value<DateTime?> stageStartedAt = const Value.absent(),
+    Value<DateTime?> lastProgressAt = const Value.absent(),
     DateTime? createdAt,
   }) => Recording(
     id: id ?? this.id,
@@ -3217,6 +3597,23 @@ class Recording extends DataClass implements Insertable<Recording> {
     serverRecordingId: serverRecordingId.present
         ? serverRecordingId.value
         : this.serverRecordingId,
+    pipelineStage: pipelineStage ?? this.pipelineStage,
+    progressPercent: progressPercent ?? this.progressPercent,
+    stageCurrent: stageCurrent.present ? stageCurrent.value : this.stageCurrent,
+    stageTotal: stageTotal.present ? stageTotal.value : this.stageTotal,
+    statusMessage: statusMessage.present
+        ? statusMessage.value
+        : this.statusMessage,
+    retryable: retryable ?? this.retryable,
+    attemptCount: attemptCount ?? this.attemptCount,
+    nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+    errorCode: errorCode.present ? errorCode.value : this.errorCode,
+    stageStartedAt: stageStartedAt.present
+        ? stageStartedAt.value
+        : this.stageStartedAt,
+    lastProgressAt: lastProgressAt.present
+        ? lastProgressAt.value
+        : this.lastProgressAt,
     createdAt: createdAt ?? this.createdAt,
   );
   Recording copyWithCompanion(RecordingsCompanion data) {
@@ -3240,6 +3637,35 @@ class Recording extends DataClass implements Insertable<Recording> {
       serverRecordingId: data.serverRecordingId.present
           ? data.serverRecordingId.value
           : this.serverRecordingId,
+      pipelineStage: data.pipelineStage.present
+          ? data.pipelineStage.value
+          : this.pipelineStage,
+      progressPercent: data.progressPercent.present
+          ? data.progressPercent.value
+          : this.progressPercent,
+      stageCurrent: data.stageCurrent.present
+          ? data.stageCurrent.value
+          : this.stageCurrent,
+      stageTotal: data.stageTotal.present
+          ? data.stageTotal.value
+          : this.stageTotal,
+      statusMessage: data.statusMessage.present
+          ? data.statusMessage.value
+          : this.statusMessage,
+      retryable: data.retryable.present ? data.retryable.value : this.retryable,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      nextRetryAt: data.nextRetryAt.present
+          ? data.nextRetryAt.value
+          : this.nextRetryAt,
+      errorCode: data.errorCode.present ? data.errorCode.value : this.errorCode,
+      stageStartedAt: data.stageStartedAt.present
+          ? data.stageStartedAt.value
+          : this.stageStartedAt,
+      lastProgressAt: data.lastProgressAt.present
+          ? data.lastProgressAt.value
+          : this.lastProgressAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -3256,13 +3682,24 @@ class Recording extends DataClass implements Insertable<Recording> {
           ..write('status: $status, ')
           ..write('uploadedBytes: $uploadedBytes, ')
           ..write('serverRecordingId: $serverRecordingId, ')
+          ..write('pipelineStage: $pipelineStage, ')
+          ..write('progressPercent: $progressPercent, ')
+          ..write('stageCurrent: $stageCurrent, ')
+          ..write('stageTotal: $stageTotal, ')
+          ..write('statusMessage: $statusMessage, ')
+          ..write('retryable: $retryable, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('errorCode: $errorCode, ')
+          ..write('stageStartedAt: $stageStartedAt, ')
+          ..write('lastProgressAt: $lastProgressAt, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     clientUuid,
     chapterClientUuid,
@@ -3272,8 +3709,19 @@ class Recording extends DataClass implements Insertable<Recording> {
     status,
     uploadedBytes,
     serverRecordingId,
+    pipelineStage,
+    progressPercent,
+    stageCurrent,
+    stageTotal,
+    statusMessage,
+    retryable,
+    attemptCount,
+    nextRetryAt,
+    errorCode,
+    stageStartedAt,
+    lastProgressAt,
     createdAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3287,6 +3735,17 @@ class Recording extends DataClass implements Insertable<Recording> {
           other.status == this.status &&
           other.uploadedBytes == this.uploadedBytes &&
           other.serverRecordingId == this.serverRecordingId &&
+          other.pipelineStage == this.pipelineStage &&
+          other.progressPercent == this.progressPercent &&
+          other.stageCurrent == this.stageCurrent &&
+          other.stageTotal == this.stageTotal &&
+          other.statusMessage == this.statusMessage &&
+          other.retryable == this.retryable &&
+          other.attemptCount == this.attemptCount &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.errorCode == this.errorCode &&
+          other.stageStartedAt == this.stageStartedAt &&
+          other.lastProgressAt == this.lastProgressAt &&
           other.createdAt == this.createdAt);
 }
 
@@ -3300,6 +3759,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
   final Value<String> status;
   final Value<int> uploadedBytes;
   final Value<String?> serverRecordingId;
+  final Value<String> pipelineStage;
+  final Value<int> progressPercent;
+  final Value<int?> stageCurrent;
+  final Value<int?> stageTotal;
+  final Value<String?> statusMessage;
+  final Value<bool> retryable;
+  final Value<int> attemptCount;
+  final Value<DateTime?> nextRetryAt;
+  final Value<String?> errorCode;
+  final Value<DateTime?> stageStartedAt;
+  final Value<DateTime?> lastProgressAt;
   final Value<DateTime> createdAt;
   const RecordingsCompanion({
     this.id = const Value.absent(),
@@ -3311,6 +3781,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
     this.status = const Value.absent(),
     this.uploadedBytes = const Value.absent(),
     this.serverRecordingId = const Value.absent(),
+    this.pipelineStage = const Value.absent(),
+    this.progressPercent = const Value.absent(),
+    this.stageCurrent = const Value.absent(),
+    this.stageTotal = const Value.absent(),
+    this.statusMessage = const Value.absent(),
+    this.retryable = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.errorCode = const Value.absent(),
+    this.stageStartedAt = const Value.absent(),
+    this.lastProgressAt = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   RecordingsCompanion.insert({
@@ -3323,6 +3804,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
     this.status = const Value.absent(),
     this.uploadedBytes = const Value.absent(),
     this.serverRecordingId = const Value.absent(),
+    this.pipelineStage = const Value.absent(),
+    this.progressPercent = const Value.absent(),
+    this.stageCurrent = const Value.absent(),
+    this.stageTotal = const Value.absent(),
+    this.statusMessage = const Value.absent(),
+    this.retryable = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.errorCode = const Value.absent(),
+    this.stageStartedAt = const Value.absent(),
+    this.lastProgressAt = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : clientUuid = Value(clientUuid),
        chapterClientUuid = Value(chapterClientUuid),
@@ -3337,6 +3829,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
     Expression<String>? status,
     Expression<int>? uploadedBytes,
     Expression<String>? serverRecordingId,
+    Expression<String>? pipelineStage,
+    Expression<int>? progressPercent,
+    Expression<int>? stageCurrent,
+    Expression<int>? stageTotal,
+    Expression<String>? statusMessage,
+    Expression<bool>? retryable,
+    Expression<int>? attemptCount,
+    Expression<DateTime>? nextRetryAt,
+    Expression<String>? errorCode,
+    Expression<DateTime>? stageStartedAt,
+    Expression<DateTime>? lastProgressAt,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -3349,6 +3852,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
       if (status != null) 'status': status,
       if (uploadedBytes != null) 'uploaded_bytes': uploadedBytes,
       if (serverRecordingId != null) 'server_recording_id': serverRecordingId,
+      if (pipelineStage != null) 'pipeline_stage': pipelineStage,
+      if (progressPercent != null) 'progress_percent': progressPercent,
+      if (stageCurrent != null) 'stage_current': stageCurrent,
+      if (stageTotal != null) 'stage_total': stageTotal,
+      if (statusMessage != null) 'status_message': statusMessage,
+      if (retryable != null) 'retryable': retryable,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (errorCode != null) 'error_code': errorCode,
+      if (stageStartedAt != null) 'stage_started_at': stageStartedAt,
+      if (lastProgressAt != null) 'last_progress_at': lastProgressAt,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -3363,6 +3877,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
     Value<String>? status,
     Value<int>? uploadedBytes,
     Value<String?>? serverRecordingId,
+    Value<String>? pipelineStage,
+    Value<int>? progressPercent,
+    Value<int?>? stageCurrent,
+    Value<int?>? stageTotal,
+    Value<String?>? statusMessage,
+    Value<bool>? retryable,
+    Value<int>? attemptCount,
+    Value<DateTime?>? nextRetryAt,
+    Value<String?>? errorCode,
+    Value<DateTime?>? stageStartedAt,
+    Value<DateTime?>? lastProgressAt,
     Value<DateTime>? createdAt,
   }) {
     return RecordingsCompanion(
@@ -3375,6 +3900,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
       status: status ?? this.status,
       uploadedBytes: uploadedBytes ?? this.uploadedBytes,
       serverRecordingId: serverRecordingId ?? this.serverRecordingId,
+      pipelineStage: pipelineStage ?? this.pipelineStage,
+      progressPercent: progressPercent ?? this.progressPercent,
+      stageCurrent: stageCurrent ?? this.stageCurrent,
+      stageTotal: stageTotal ?? this.stageTotal,
+      statusMessage: statusMessage ?? this.statusMessage,
+      retryable: retryable ?? this.retryable,
+      attemptCount: attemptCount ?? this.attemptCount,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      errorCode: errorCode ?? this.errorCode,
+      stageStartedAt: stageStartedAt ?? this.stageStartedAt,
+      lastProgressAt: lastProgressAt ?? this.lastProgressAt,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -3409,6 +3945,39 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
     if (serverRecordingId.present) {
       map['server_recording_id'] = Variable<String>(serverRecordingId.value);
     }
+    if (pipelineStage.present) {
+      map['pipeline_stage'] = Variable<String>(pipelineStage.value);
+    }
+    if (progressPercent.present) {
+      map['progress_percent'] = Variable<int>(progressPercent.value);
+    }
+    if (stageCurrent.present) {
+      map['stage_current'] = Variable<int>(stageCurrent.value);
+    }
+    if (stageTotal.present) {
+      map['stage_total'] = Variable<int>(stageTotal.value);
+    }
+    if (statusMessage.present) {
+      map['status_message'] = Variable<String>(statusMessage.value);
+    }
+    if (retryable.present) {
+      map['retryable'] = Variable<bool>(retryable.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (errorCode.present) {
+      map['error_code'] = Variable<String>(errorCode.value);
+    }
+    if (stageStartedAt.present) {
+      map['stage_started_at'] = Variable<DateTime>(stageStartedAt.value);
+    }
+    if (lastProgressAt.present) {
+      map['last_progress_at'] = Variable<DateTime>(lastProgressAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3427,6 +3996,17 @@ class RecordingsCompanion extends UpdateCompanion<Recording> {
           ..write('status: $status, ')
           ..write('uploadedBytes: $uploadedBytes, ')
           ..write('serverRecordingId: $serverRecordingId, ')
+          ..write('pipelineStage: $pipelineStage, ')
+          ..write('progressPercent: $progressPercent, ')
+          ..write('stageCurrent: $stageCurrent, ')
+          ..write('stageTotal: $stageTotal, ')
+          ..write('statusMessage: $statusMessage, ')
+          ..write('retryable: $retryable, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('errorCode: $errorCode, ')
+          ..write('stageStartedAt: $stageStartedAt, ')
+          ..write('lastProgressAt: $lastProgressAt, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -4002,6 +4582,17 @@ class $SummariesTable extends Summaries
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _generationIdMeta = const VerificationMeta(
+    'generationId',
+  );
+  @override
+  late final GeneratedColumn<String> generationId = GeneratedColumn<String>(
+    'generation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -4063,6 +4654,7 @@ class $SummariesTable extends Summaries
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     contentMd,
     structuredJson,
@@ -4096,6 +4688,15 @@ class $SummariesTable extends Summaries
         recordingServerId.isAcceptableOrUnknown(
           data['recording_server_id']!,
           _recordingServerIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('generation_id')) {
+      context.handle(
+        _generationIdMeta,
+        generationId.isAcceptableOrUnknown(
+          data['generation_id']!,
+          _generationIdMeta,
         ),
       );
     }
@@ -4163,6 +4764,10 @@ class $SummariesTable extends Summaries
         DriftSqlType.string,
         data['${effectivePrefix}recording_server_id'],
       ),
+      generationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -4196,6 +4801,7 @@ class Summary extends DataClass implements Insertable<Summary> {
   final int id;
   final String? serverId;
   final String? recordingServerId;
+  final String? generationId;
   final String chapterClientUuid;
   final String contentMd;
   final String? structuredJson;
@@ -4205,6 +4811,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     required this.id,
     this.serverId,
     this.recordingServerId,
+    this.generationId,
     required this.chapterClientUuid,
     required this.contentMd,
     this.structuredJson,
@@ -4220,6 +4827,9 @@ class Summary extends DataClass implements Insertable<Summary> {
     }
     if (!nullToAbsent || recordingServerId != null) {
       map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
+    if (!nullToAbsent || generationId != null) {
+      map['generation_id'] = Variable<String>(generationId);
     }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['content_md'] = Variable<String>(contentMd);
@@ -4240,6 +4850,9 @@ class Summary extends DataClass implements Insertable<Summary> {
       recordingServerId: recordingServerId == null && nullToAbsent
           ? const Value.absent()
           : Value(recordingServerId),
+      generationId: generationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(generationId),
       chapterClientUuid: Value(chapterClientUuid),
       contentMd: Value(contentMd),
       structuredJson: structuredJson == null && nullToAbsent
@@ -4261,6 +4874,7 @@ class Summary extends DataClass implements Insertable<Summary> {
       recordingServerId: serializer.fromJson<String?>(
         json['recordingServerId'],
       ),
+      generationId: serializer.fromJson<String?>(json['generationId']),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       contentMd: serializer.fromJson<String>(json['contentMd']),
       structuredJson: serializer.fromJson<String?>(json['structuredJson']),
@@ -4275,6 +4889,7 @@ class Summary extends DataClass implements Insertable<Summary> {
       'id': serializer.toJson<int>(id),
       'serverId': serializer.toJson<String?>(serverId),
       'recordingServerId': serializer.toJson<String?>(recordingServerId),
+      'generationId': serializer.toJson<String?>(generationId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'contentMd': serializer.toJson<String>(contentMd),
       'structuredJson': serializer.toJson<String?>(structuredJson),
@@ -4287,6 +4902,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     int? id,
     Value<String?> serverId = const Value.absent(),
     Value<String?> recordingServerId = const Value.absent(),
+    Value<String?> generationId = const Value.absent(),
     String? chapterClientUuid,
     String? contentMd,
     Value<String?> structuredJson = const Value.absent(),
@@ -4298,6 +4914,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     recordingServerId: recordingServerId.present
         ? recordingServerId.value
         : this.recordingServerId,
+    generationId: generationId.present ? generationId.value : this.generationId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     contentMd: contentMd ?? this.contentMd,
     structuredJson: structuredJson.present
@@ -4313,6 +4930,9 @@ class Summary extends DataClass implements Insertable<Summary> {
       recordingServerId: data.recordingServerId.present
           ? data.recordingServerId.value
           : this.recordingServerId,
+      generationId: data.generationId.present
+          ? data.generationId.value
+          : this.generationId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
@@ -4333,6 +4953,7 @@ class Summary extends DataClass implements Insertable<Summary> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('contentMd: $contentMd, ')
           ..write('structuredJson: $structuredJson, ')
@@ -4347,6 +4968,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     contentMd,
     structuredJson,
@@ -4360,6 +4982,7 @@ class Summary extends DataClass implements Insertable<Summary> {
           other.id == this.id &&
           other.serverId == this.serverId &&
           other.recordingServerId == this.recordingServerId &&
+          other.generationId == this.generationId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.contentMd == this.contentMd &&
           other.structuredJson == this.structuredJson &&
@@ -4371,6 +4994,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   final Value<int> id;
   final Value<String?> serverId;
   final Value<String?> recordingServerId;
+  final Value<String?> generationId;
   final Value<String> chapterClientUuid;
   final Value<String> contentMd;
   final Value<String?> structuredJson;
@@ -4380,6 +5004,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.contentMd = const Value.absent(),
     this.structuredJson = const Value.absent(),
@@ -4390,6 +5015,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     required String chapterClientUuid,
     required String contentMd,
     this.structuredJson = const Value.absent(),
@@ -4401,6 +5027,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     Expression<int>? id,
     Expression<String>? serverId,
     Expression<String>? recordingServerId,
+    Expression<String>? generationId,
     Expression<String>? chapterClientUuid,
     Expression<String>? contentMd,
     Expression<String>? structuredJson,
@@ -4411,6 +5038,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
       if (id != null) 'id': id,
       if (serverId != null) 'server_id': serverId,
       if (recordingServerId != null) 'recording_server_id': recordingServerId,
+      if (generationId != null) 'generation_id': generationId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (contentMd != null) 'content_md': contentMd,
       if (structuredJson != null) 'structured_json': structuredJson,
@@ -4423,6 +5051,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     Value<int>? id,
     Value<String?>? serverId,
     Value<String?>? recordingServerId,
+    Value<String?>? generationId,
     Value<String>? chapterClientUuid,
     Value<String>? contentMd,
     Value<String?>? structuredJson,
@@ -4433,6 +5062,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
       recordingServerId: recordingServerId ?? this.recordingServerId,
+      generationId: generationId ?? this.generationId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       contentMd: contentMd ?? this.contentMd,
       structuredJson: structuredJson ?? this.structuredJson,
@@ -4452,6 +5082,9 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     }
     if (recordingServerId.present) {
       map['recording_server_id'] = Variable<String>(recordingServerId.value);
+    }
+    if (generationId.present) {
+      map['generation_id'] = Variable<String>(generationId.value);
     }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
@@ -4477,6 +5110,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('contentMd: $contentMd, ')
           ..write('structuredJson: $structuredJson, ')
@@ -4529,6 +5163,17 @@ class $ExercisesTable extends Exercises
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _generationIdMeta = const VerificationMeta(
+    'generationId',
+  );
+  @override
+  late final GeneratedColumn<String> generationId = GeneratedColumn<String>(
+    'generation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -4579,6 +5224,7 @@ class $ExercisesTable extends Exercises
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     itemsJson,
     status,
@@ -4611,6 +5257,15 @@ class $ExercisesTable extends Exercises
         recordingServerId.isAcceptableOrUnknown(
           data['recording_server_id']!,
           _recordingServerIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('generation_id')) {
+      context.handle(
+        _generationIdMeta,
+        generationId.isAcceptableOrUnknown(
+          data['generation_id']!,
+          _generationIdMeta,
         ),
       );
     }
@@ -4669,6 +5324,10 @@ class $ExercisesTable extends Exercises
         DriftSqlType.string,
         data['${effectivePrefix}recording_server_id'],
       ),
+      generationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -4698,6 +5357,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final int id;
   final String? serverId;
   final String? recordingServerId;
+  final String? generationId;
   final String chapterClientUuid;
   final String itemsJson;
   final String status;
@@ -4706,6 +5366,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.id,
     this.serverId,
     this.recordingServerId,
+    this.generationId,
     required this.chapterClientUuid,
     required this.itemsJson,
     required this.status,
@@ -4720,6 +5381,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     }
     if (!nullToAbsent || recordingServerId != null) {
       map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
+    if (!nullToAbsent || generationId != null) {
+      map['generation_id'] = Variable<String>(generationId);
     }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['items_json'] = Variable<String>(itemsJson);
@@ -4737,6 +5401,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       recordingServerId: recordingServerId == null && nullToAbsent
           ? const Value.absent()
           : Value(recordingServerId),
+      generationId: generationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(generationId),
       chapterClientUuid: Value(chapterClientUuid),
       itemsJson: Value(itemsJson),
       status: Value(status),
@@ -4755,6 +5422,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       recordingServerId: serializer.fromJson<String?>(
         json['recordingServerId'],
       ),
+      generationId: serializer.fromJson<String?>(json['generationId']),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       itemsJson: serializer.fromJson<String>(json['itemsJson']),
       status: serializer.fromJson<String>(json['status']),
@@ -4768,6 +5436,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'id': serializer.toJson<int>(id),
       'serverId': serializer.toJson<String?>(serverId),
       'recordingServerId': serializer.toJson<String?>(recordingServerId),
+      'generationId': serializer.toJson<String?>(generationId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'itemsJson': serializer.toJson<String>(itemsJson),
       'status': serializer.toJson<String>(status),
@@ -4779,6 +5448,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     int? id,
     Value<String?> serverId = const Value.absent(),
     Value<String?> recordingServerId = const Value.absent(),
+    Value<String?> generationId = const Value.absent(),
     String? chapterClientUuid,
     String? itemsJson,
     String? status,
@@ -4789,6 +5459,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     recordingServerId: recordingServerId.present
         ? recordingServerId.value
         : this.recordingServerId,
+    generationId: generationId.present ? generationId.value : this.generationId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     itemsJson: itemsJson ?? this.itemsJson,
     status: status ?? this.status,
@@ -4801,6 +5472,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       recordingServerId: data.recordingServerId.present
           ? data.recordingServerId.value
           : this.recordingServerId,
+      generationId: data.generationId.present
+          ? data.generationId.value
+          : this.generationId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
@@ -4818,6 +5492,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('itemsJson: $itemsJson, ')
           ..write('status: $status, ')
@@ -4831,6 +5506,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     itemsJson,
     status,
@@ -4843,6 +5519,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.id == this.id &&
           other.serverId == this.serverId &&
           other.recordingServerId == this.recordingServerId &&
+          other.generationId == this.generationId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.itemsJson == this.itemsJson &&
           other.status == this.status &&
@@ -4853,6 +5530,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<int> id;
   final Value<String?> serverId;
   final Value<String?> recordingServerId;
+  final Value<String?> generationId;
   final Value<String> chapterClientUuid;
   final Value<String> itemsJson;
   final Value<String> status;
@@ -4861,6 +5539,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.itemsJson = const Value.absent(),
     this.status = const Value.absent(),
@@ -4870,6 +5549,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     required String chapterClientUuid,
     required String itemsJson,
     this.status = const Value.absent(),
@@ -4880,6 +5560,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<int>? id,
     Expression<String>? serverId,
     Expression<String>? recordingServerId,
+    Expression<String>? generationId,
     Expression<String>? chapterClientUuid,
     Expression<String>? itemsJson,
     Expression<String>? status,
@@ -4889,6 +5570,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (id != null) 'id': id,
       if (serverId != null) 'server_id': serverId,
       if (recordingServerId != null) 'recording_server_id': recordingServerId,
+      if (generationId != null) 'generation_id': generationId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (itemsJson != null) 'items_json': itemsJson,
       if (status != null) 'status': status,
@@ -4900,6 +5582,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<int>? id,
     Value<String?>? serverId,
     Value<String?>? recordingServerId,
+    Value<String?>? generationId,
     Value<String>? chapterClientUuid,
     Value<String>? itemsJson,
     Value<String>? status,
@@ -4909,6 +5592,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
       recordingServerId: recordingServerId ?? this.recordingServerId,
+      generationId: generationId ?? this.generationId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       itemsJson: itemsJson ?? this.itemsJson,
       status: status ?? this.status,
@@ -4927,6 +5611,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     }
     if (recordingServerId.present) {
       map['recording_server_id'] = Variable<String>(recordingServerId.value);
+    }
+    if (generationId.present) {
+      map['generation_id'] = Variable<String>(generationId.value);
     }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
@@ -4949,6 +5636,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('itemsJson: $itemsJson, ')
           ..write('status: $status, ')
@@ -4999,6 +5687,17 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _generationIdMeta = const VerificationMeta(
+    'generationId',
+  );
+  @override
+  late final GeneratedColumn<String> generationId = GeneratedColumn<String>(
+    'generation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _chapterClientUuidMeta = const VerificationMeta(
     'chapterClientUuid',
   );
@@ -5049,6 +5748,7 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     questionsJson,
     status,
@@ -5081,6 +5781,15 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
         recordingServerId.isAcceptableOrUnknown(
           data['recording_server_id']!,
           _recordingServerIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('generation_id')) {
+      context.handle(
+        _generationIdMeta,
+        generationId.isAcceptableOrUnknown(
+          data['generation_id']!,
+          _generationIdMeta,
         ),
       );
     }
@@ -5142,6 +5851,10 @@ class $QuizzesTable extends Quizzes with TableInfo<$QuizzesTable, Quizze> {
         DriftSqlType.string,
         data['${effectivePrefix}recording_server_id'],
       ),
+      generationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation_id'],
+      ),
       chapterClientUuid: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}chapter_client_uuid'],
@@ -5171,6 +5884,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
   final int id;
   final String? serverId;
   final String? recordingServerId;
+  final String? generationId;
   final String chapterClientUuid;
   final String questionsJson;
   final String status;
@@ -5179,6 +5893,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     required this.id,
     this.serverId,
     this.recordingServerId,
+    this.generationId,
     required this.chapterClientUuid,
     required this.questionsJson,
     required this.status,
@@ -5193,6 +5908,9 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     }
     if (!nullToAbsent || recordingServerId != null) {
       map['recording_server_id'] = Variable<String>(recordingServerId);
+    }
+    if (!nullToAbsent || generationId != null) {
+      map['generation_id'] = Variable<String>(generationId);
     }
     map['chapter_client_uuid'] = Variable<String>(chapterClientUuid);
     map['questions_json'] = Variable<String>(questionsJson);
@@ -5210,6 +5928,9 @@ class Quizze extends DataClass implements Insertable<Quizze> {
       recordingServerId: recordingServerId == null && nullToAbsent
           ? const Value.absent()
           : Value(recordingServerId),
+      generationId: generationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(generationId),
       chapterClientUuid: Value(chapterClientUuid),
       questionsJson: Value(questionsJson),
       status: Value(status),
@@ -5228,6 +5949,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
       recordingServerId: serializer.fromJson<String?>(
         json['recordingServerId'],
       ),
+      generationId: serializer.fromJson<String?>(json['generationId']),
       chapterClientUuid: serializer.fromJson<String>(json['chapterClientUuid']),
       questionsJson: serializer.fromJson<String>(json['questionsJson']),
       status: serializer.fromJson<String>(json['status']),
@@ -5241,6 +5963,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
       'id': serializer.toJson<int>(id),
       'serverId': serializer.toJson<String?>(serverId),
       'recordingServerId': serializer.toJson<String?>(recordingServerId),
+      'generationId': serializer.toJson<String?>(generationId),
       'chapterClientUuid': serializer.toJson<String>(chapterClientUuid),
       'questionsJson': serializer.toJson<String>(questionsJson),
       'status': serializer.toJson<String>(status),
@@ -5252,6 +5975,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     int? id,
     Value<String?> serverId = const Value.absent(),
     Value<String?> recordingServerId = const Value.absent(),
+    Value<String?> generationId = const Value.absent(),
     String? chapterClientUuid,
     String? questionsJson,
     String? status,
@@ -5262,6 +5986,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     recordingServerId: recordingServerId.present
         ? recordingServerId.value
         : this.recordingServerId,
+    generationId: generationId.present ? generationId.value : this.generationId,
     chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
     questionsJson: questionsJson ?? this.questionsJson,
     status: status ?? this.status,
@@ -5274,6 +5999,9 @@ class Quizze extends DataClass implements Insertable<Quizze> {
       recordingServerId: data.recordingServerId.present
           ? data.recordingServerId.value
           : this.recordingServerId,
+      generationId: data.generationId.present
+          ? data.generationId.value
+          : this.generationId,
       chapterClientUuid: data.chapterClientUuid.present
           ? data.chapterClientUuid.value
           : this.chapterClientUuid,
@@ -5293,6 +6021,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('questionsJson: $questionsJson, ')
           ..write('status: $status, ')
@@ -5306,6 +6035,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
     id,
     serverId,
     recordingServerId,
+    generationId,
     chapterClientUuid,
     questionsJson,
     status,
@@ -5318,6 +6048,7 @@ class Quizze extends DataClass implements Insertable<Quizze> {
           other.id == this.id &&
           other.serverId == this.serverId &&
           other.recordingServerId == this.recordingServerId &&
+          other.generationId == this.generationId &&
           other.chapterClientUuid == this.chapterClientUuid &&
           other.questionsJson == this.questionsJson &&
           other.status == this.status &&
@@ -5328,6 +6059,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
   final Value<int> id;
   final Value<String?> serverId;
   final Value<String?> recordingServerId;
+  final Value<String?> generationId;
   final Value<String> chapterClientUuid;
   final Value<String> questionsJson;
   final Value<String> status;
@@ -5336,6 +6068,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     this.chapterClientUuid = const Value.absent(),
     this.questionsJson = const Value.absent(),
     this.status = const Value.absent(),
@@ -5345,6 +6078,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
     this.recordingServerId = const Value.absent(),
+    this.generationId = const Value.absent(),
     required String chapterClientUuid,
     required String questionsJson,
     this.status = const Value.absent(),
@@ -5355,6 +6089,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     Expression<int>? id,
     Expression<String>? serverId,
     Expression<String>? recordingServerId,
+    Expression<String>? generationId,
     Expression<String>? chapterClientUuid,
     Expression<String>? questionsJson,
     Expression<String>? status,
@@ -5364,6 +6099,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
       if (id != null) 'id': id,
       if (serverId != null) 'server_id': serverId,
       if (recordingServerId != null) 'recording_server_id': recordingServerId,
+      if (generationId != null) 'generation_id': generationId,
       if (chapterClientUuid != null) 'chapter_client_uuid': chapterClientUuid,
       if (questionsJson != null) 'questions_json': questionsJson,
       if (status != null) 'status': status,
@@ -5375,6 +6111,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     Value<int>? id,
     Value<String?>? serverId,
     Value<String?>? recordingServerId,
+    Value<String?>? generationId,
     Value<String>? chapterClientUuid,
     Value<String>? questionsJson,
     Value<String>? status,
@@ -5384,6 +6121,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
       recordingServerId: recordingServerId ?? this.recordingServerId,
+      generationId: generationId ?? this.generationId,
       chapterClientUuid: chapterClientUuid ?? this.chapterClientUuid,
       questionsJson: questionsJson ?? this.questionsJson,
       status: status ?? this.status,
@@ -5402,6 +6140,9 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
     }
     if (recordingServerId.present) {
       map['recording_server_id'] = Variable<String>(recordingServerId.value);
+    }
+    if (generationId.present) {
+      map['generation_id'] = Variable<String>(generationId.value);
     }
     if (chapterClientUuid.present) {
       map['chapter_client_uuid'] = Variable<String>(chapterClientUuid.value);
@@ -5424,6 +6165,7 @@ class QuizzesCompanion extends UpdateCompanion<Quizze> {
           ..write('id: $id, ')
           ..write('serverId: $serverId, ')
           ..write('recordingServerId: $recordingServerId, ')
+          ..write('generationId: $generationId, ')
           ..write('chapterClientUuid: $chapterClientUuid, ')
           ..write('questionsJson: $questionsJson, ')
           ..write('status: $status, ')
@@ -7609,6 +8351,17 @@ typedef $$RecordingsTableCreateCompanionBuilder =
       Value<String> status,
       Value<int> uploadedBytes,
       Value<String?> serverRecordingId,
+      Value<String> pipelineStage,
+      Value<int> progressPercent,
+      Value<int?> stageCurrent,
+      Value<int?> stageTotal,
+      Value<String?> statusMessage,
+      Value<bool> retryable,
+      Value<int> attemptCount,
+      Value<DateTime?> nextRetryAt,
+      Value<String?> errorCode,
+      Value<DateTime?> stageStartedAt,
+      Value<DateTime?> lastProgressAt,
       Value<DateTime> createdAt,
     });
 typedef $$RecordingsTableUpdateCompanionBuilder =
@@ -7622,6 +8375,17 @@ typedef $$RecordingsTableUpdateCompanionBuilder =
       Value<String> status,
       Value<int> uploadedBytes,
       Value<String?> serverRecordingId,
+      Value<String> pipelineStage,
+      Value<int> progressPercent,
+      Value<int?> stageCurrent,
+      Value<int?> stageTotal,
+      Value<String?> statusMessage,
+      Value<bool> retryable,
+      Value<int> attemptCount,
+      Value<DateTime?> nextRetryAt,
+      Value<String?> errorCode,
+      Value<DateTime?> stageStartedAt,
+      Value<DateTime?> lastProgressAt,
       Value<DateTime> createdAt,
     });
 
@@ -7676,6 +8440,61 @@ class $$RecordingsTableFilterComposer
 
   ColumnFilters<String> get serverRecordingId => $composableBuilder(
     column: $table.serverRecordingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pipelineStage => $composableBuilder(
+    column: $table.pipelineStage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get progressPercent => $composableBuilder(
+    column: $table.progressPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get stageCurrent => $composableBuilder(
+    column: $table.stageCurrent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get stageTotal => $composableBuilder(
+    column: $table.stageTotal,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get retryable => $composableBuilder(
+    column: $table.retryable,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorCode => $composableBuilder(
+    column: $table.errorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get stageStartedAt => $composableBuilder(
+    column: $table.stageStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastProgressAt => $composableBuilder(
+    column: $table.lastProgressAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7739,6 +8558,61 @@ class $$RecordingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get pipelineStage => $composableBuilder(
+    column: $table.pipelineStage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get progressPercent => $composableBuilder(
+    column: $table.progressPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get stageCurrent => $composableBuilder(
+    column: $table.stageCurrent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get stageTotal => $composableBuilder(
+    column: $table.stageTotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get retryable => $composableBuilder(
+    column: $table.retryable,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorCode => $composableBuilder(
+    column: $table.errorCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get stageStartedAt => $composableBuilder(
+    column: $table.stageStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastProgressAt => $composableBuilder(
+    column: $table.lastProgressAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7791,6 +8665,57 @@ class $$RecordingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get pipelineStage => $composableBuilder(
+    column: $table.pipelineStage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get progressPercent => $composableBuilder(
+    column: $table.progressPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get stageCurrent => $composableBuilder(
+    column: $table.stageCurrent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get stageTotal => $composableBuilder(
+    column: $table.stageTotal,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get retryable =>
+      $composableBuilder(column: $table.retryable, builder: (column) => column);
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorCode =>
+      $composableBuilder(column: $table.errorCode, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get stageStartedAt => $composableBuilder(
+    column: $table.stageStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastProgressAt => $composableBuilder(
+    column: $table.lastProgressAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -7835,6 +8760,17 @@ class $$RecordingsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<int> uploadedBytes = const Value.absent(),
                 Value<String?> serverRecordingId = const Value.absent(),
+                Value<String> pipelineStage = const Value.absent(),
+                Value<int> progressPercent = const Value.absent(),
+                Value<int?> stageCurrent = const Value.absent(),
+                Value<int?> stageTotal = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<bool> retryable = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextRetryAt = const Value.absent(),
+                Value<String?> errorCode = const Value.absent(),
+                Value<DateTime?> stageStartedAt = const Value.absent(),
+                Value<DateTime?> lastProgressAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => RecordingsCompanion(
                 id: id,
@@ -7846,6 +8782,17 @@ class $$RecordingsTableTableManager
                 status: status,
                 uploadedBytes: uploadedBytes,
                 serverRecordingId: serverRecordingId,
+                pipelineStage: pipelineStage,
+                progressPercent: progressPercent,
+                stageCurrent: stageCurrent,
+                stageTotal: stageTotal,
+                statusMessage: statusMessage,
+                retryable: retryable,
+                attemptCount: attemptCount,
+                nextRetryAt: nextRetryAt,
+                errorCode: errorCode,
+                stageStartedAt: stageStartedAt,
+                lastProgressAt: lastProgressAt,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -7859,6 +8806,17 @@ class $$RecordingsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<int> uploadedBytes = const Value.absent(),
                 Value<String?> serverRecordingId = const Value.absent(),
+                Value<String> pipelineStage = const Value.absent(),
+                Value<int> progressPercent = const Value.absent(),
+                Value<int?> stageCurrent = const Value.absent(),
+                Value<int?> stageTotal = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<bool> retryable = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextRetryAt = const Value.absent(),
+                Value<String?> errorCode = const Value.absent(),
+                Value<DateTime?> stageStartedAt = const Value.absent(),
+                Value<DateTime?> lastProgressAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => RecordingsCompanion.insert(
                 id: id,
@@ -7870,6 +8828,17 @@ class $$RecordingsTableTableManager
                 status: status,
                 uploadedBytes: uploadedBytes,
                 serverRecordingId: serverRecordingId,
+                pipelineStage: pipelineStage,
+                progressPercent: progressPercent,
+                stageCurrent: stageCurrent,
+                stageTotal: stageTotal,
+                statusMessage: statusMessage,
+                retryable: retryable,
+                attemptCount: attemptCount,
+                nextRetryAt: nextRetryAt,
+                errorCode: errorCode,
+                stageStartedAt: stageStartedAt,
+                lastProgressAt: lastProgressAt,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -8158,6 +9127,7 @@ typedef $$SummariesTableCreateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       required String chapterClientUuid,
       required String contentMd,
       Value<String?> structuredJson,
@@ -8169,6 +9139,7 @@ typedef $$SummariesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       Value<String> chapterClientUuid,
       Value<String> contentMd,
       Value<String?> structuredJson,
@@ -8197,6 +9168,11 @@ class $$SummariesTableFilterComposer
 
   ColumnFilters<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8250,6 +9226,11 @@ class $$SummariesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -8293,6 +9274,11 @@ class $$SummariesTableAnnotationComposer
 
   GeneratedColumn<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => column,
   );
 
@@ -8349,6 +9335,7 @@ class $$SummariesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> contentMd = const Value.absent(),
                 Value<String?> structuredJson = const Value.absent(),
@@ -8358,6 +9345,7 @@ class $$SummariesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 contentMd: contentMd,
                 structuredJson: structuredJson,
@@ -8369,6 +9357,7 @@ class $$SummariesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 required String chapterClientUuid,
                 required String contentMd,
                 Value<String?> structuredJson = const Value.absent(),
@@ -8378,6 +9367,7 @@ class $$SummariesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 contentMd: contentMd,
                 structuredJson: structuredJson,
@@ -8411,6 +9401,7 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       required String chapterClientUuid,
       required String itemsJson,
       Value<String> status,
@@ -8421,6 +9412,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       Value<String> chapterClientUuid,
       Value<String> itemsJson,
       Value<String> status,
@@ -8448,6 +9440,11 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8496,6 +9493,11 @@ class $$ExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -8534,6 +9536,11 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => column,
   );
 
@@ -8585,6 +9592,7 @@ class $$ExercisesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> itemsJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
@@ -8593,6 +9601,7 @@ class $$ExercisesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 itemsJson: itemsJson,
                 status: status,
@@ -8603,6 +9612,7 @@ class $$ExercisesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 required String chapterClientUuid,
                 required String itemsJson,
                 Value<String> status = const Value.absent(),
@@ -8611,6 +9621,7 @@ class $$ExercisesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 itemsJson: itemsJson,
                 status: status,
@@ -8643,6 +9654,7 @@ typedef $$QuizzesTableCreateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       required String chapterClientUuid,
       required String questionsJson,
       Value<String> status,
@@ -8653,6 +9665,7 @@ typedef $$QuizzesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String?> serverId,
       Value<String?> recordingServerId,
+      Value<String?> generationId,
       Value<String> chapterClientUuid,
       Value<String> questionsJson,
       Value<String> status,
@@ -8680,6 +9693,11 @@ class $$QuizzesTableFilterComposer
 
   ColumnFilters<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8728,6 +9746,11 @@ class $$QuizzesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get chapterClientUuid => $composableBuilder(
     column: $table.chapterClientUuid,
     builder: (column) => ColumnOrderings(column),
@@ -8766,6 +9789,11 @@ class $$QuizzesTableAnnotationComposer
 
   GeneratedColumn<String> get recordingServerId => $composableBuilder(
     column: $table.recordingServerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get generationId => $composableBuilder(
+    column: $table.generationId,
     builder: (column) => column,
   );
 
@@ -8819,6 +9847,7 @@ class $$QuizzesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 Value<String> chapterClientUuid = const Value.absent(),
                 Value<String> questionsJson = const Value.absent(),
                 Value<String> status = const Value.absent(),
@@ -8827,6 +9856,7 @@ class $$QuizzesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 questionsJson: questionsJson,
                 status: status,
@@ -8837,6 +9867,7 @@ class $$QuizzesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> serverId = const Value.absent(),
                 Value<String?> recordingServerId = const Value.absent(),
+                Value<String?> generationId = const Value.absent(),
                 required String chapterClientUuid,
                 required String questionsJson,
                 Value<String> status = const Value.absent(),
@@ -8845,6 +9876,7 @@ class $$QuizzesTableTableManager
                 id: id,
                 serverId: serverId,
                 recordingServerId: recordingServerId,
+                generationId: generationId,
                 chapterClientUuid: chapterClientUuid,
                 questionsJson: questionsJson,
                 status: status,

@@ -1,7 +1,7 @@
 # AGEND.md — BuddyWize project notebook
 
-> Required reading before any PR that touches the AI pipeline, the
-> status enums, or the boundaries between crates. This is the single
+> Required reading before any PR that touches the AI pipeline, storage,
+> sync, the status enums, or the boundaries between crates. This is the single
 > source of truth for what we built, why we built it, and what must
 > not change.
 >
@@ -119,7 +119,7 @@ read them via the `AuthUser(claims)` extractor (`auth/middleware.rs:45`).
 2. API: creates user, seeds 7-day trial subscription, returns
    access + refresh JWT.
 3. Mobile: persists tokens in local storage, enters the home shell.
-4. Sync engine starts its 45-second periodic timer.
+4. Sync engine starts its adaptive foreground poller.
 
 ### 3.2 Offline-first sync
 
@@ -130,9 +130,18 @@ mutation; clients send `?since=<cursor>` to get deltas. Soft delete
 (`deleted_at`) carries deletions through the delta so the client
 sees tombstones.
 
-The mobile side pulls on its 45-second timer and also immediately
-when a recording stops. Push goes first, pull second, so local
-changes always land before remote changes are accepted back.
+The mobile side normally polls every 45 seconds, but switches to a
+2-second poll while a recording is uploading or processing. It also
+runs immediately when connectivity returns, the app resumes, the user
+requests a sync, or a recording stops. Foreground and WorkManager
+passes share a three-minute SQLite lease so two isolates cannot mutate
+the local database concurrently. A trigger received during an active
+pass schedules exactly one follow-up pass instead of being dropped.
+
+Push goes first, pull second, so local changes land before remote
+changes are accepted back. Upload failures persist `next_retry_at`;
+the 2-second active poll must respect that timestamp or it becomes a
+tight retry storm.
 
 ### 3.3 Recording → AI pipeline → study
 
@@ -143,21 +152,32 @@ mobile record()
   → local drift row (status='local_only')
   → mobile stop()
   → status='pending_sync'
-  → sync tick: upload (PUT chunks to R2 via /api/recordings/uploads)
+  → sync tick: upload chunks to API via /api/recordings/uploads
   → status='uploading'
-  → complete_upload → status='uploaded' + jobs_tx.send(recording_id)
+  → complete_upload: API does one R2 put_object, persists the
+      recording, then enqueues recording_jobs(state='queued')
+  → durable worker claims the row with FOR UPDATE SKIP LOCKED
+  → recording_jobs.state='running' + a renewable worker lease
   → pipeline:
       1. entitlement check       → status='blocked' if none
-      2. status='processing'
-      3. storage.read(audio)
-      4. STT.transcribe(audio)
-      5. silent-guard (zero words → status='failed' w/ msg)
-      6. persist transcript (provider = stt.name())
-      7. StudyGenerator.generate(chapter, transcript)
-      8. persist summary + exercises + quiz (status='approved')
-      9. status='ready'
-  → mobile sync tick (≤ 45 s) → /api/study delta → user sees material
+      2. storage.read(audio)
+      3. STT.transcribe_with_progress(audio)
+      4. silent-guard (zero words → status='failed' w/ msg)
+      5. persist this recording's transcript + timed segments
+      6. merge every chapter-session transcript chronologically
+      7. StudyGenerator.generate(chapter, cumulative transcript)
+      8. append one generation-linked summary/exercises/quiz pack
+      9. status='ready', progress=100, job.state='done'
+  → transient error: job.state='retry_wait' with exponential backoff
+  → worker death: expired lease is swept and re-queued automatically
+  → mobile active poll (≈ 2 s) → recording + study deltas → material
 ```
+
+Queue invariants: heartbeat every 30 seconds, lease expires after two
+minutes, stale-job sweep every 30 seconds, maximum six claimed
+attempts, retry delay starts at 15 seconds and caps at 15 minutes.
+These values live together at the top of `pipeline.rs`; change them as
+one system, never independently.
 
 ### 3.4 Studying offline
 
@@ -205,7 +225,7 @@ split into separate binaries later without rewriting.
 | `buddywize-core`     | Shared types, errors, Role enum, `SettingsStore`, `StorageBackend` trait, entitlement helpers, JWT-friendly `ApiError`. |
 | `buddywize-auth`     | JWT issue/validate, password hashing, `require_auth` + `require_admin` middleware, seed-admin on startup. |
 | `buddywize-courses`  | Agenda / courses / lessons / chapters CRUD + delta sync. Study material delta endpoint. Quiz attempts. |
-| `buddywize-recordings` | Resumable chunked upload sessions. The `StorageBackend` trait lives here too. |
+| `buddywize-recordings` | Resumable chunked upload sessions and durable queue enqueue/reprocess operations. |
 | `buddywize-ai`      | `SttProvider` + `StudyGenerator` traits, all implementations, `pipeline::Pipeline`. |
 | `buddywize-admin`   | Admin-only endpoints: users, recordings, study_generator swap. |
 | `buddywize-api`     | The Axum binary that wires everything together, runs migrations, starts the pipeline worker. |
@@ -219,14 +239,15 @@ split into separate binaries later without rewriting.
 - **Audio capture**: the `record` package, AAC-LC encoder, m4a
   container, 128 kbps stereo, 44.1 kHz.
 - **HTTP**: the in-house `api_client.dart` handles JWT refresh on 401.
-- **Sync engine**: `lib/sync/sync_engine.dart` — push local, pull
-  remote, with `InsertMode.insertOrReplace` for pulled rows.
+- **Sync engine**: `lib/sync/sync_engine.dart` — leased, adaptive,
+  push-local then pull-remote, with `InsertMode.insertOrReplace` for
+  pulled rows and persisted retry timestamps for interrupted uploads.
 
 ### 4.4 Admin (Svelte 5)
 
 - Vite SPA on port 5173.
 - Bearer token in `localStorage`, refreshed in `api.js` on 401.
-- Three tabs in the sidebar: Dashboard, Recordings, Users, Settings.
+- Four tabs in the sidebar: Dashboard, Recordings, Users, Settings.
 - The Recordings tab lets admins expand any row to play the audio
   (HTTP Range), read the transcript, and inspect the generated
   summary/exercises/quiz inline (rendered with `lib/markdown.js`).
@@ -269,7 +290,7 @@ split into separate binaries later without rewriting.
 
 ## 6. Data model
 
-Sixteen tables. Migrations live in `backend/migrations/`. They are
+Nineteen tables. Migrations live in `backend/migrations/`. They are
 append-only — see §10 law #8.
 
 | Table | Purpose | Status column | Sync semantics |
@@ -283,6 +304,8 @@ append-only — see §10 law #8.
 | `chapters` | Recording container. | — | Client UUID; soft-delete. |
 | `recordings` | One row per uploaded recording. | `uploaded` → `processing` → `ready` (or `failed` / `blocked`). | Server-only id (UUIDv4); mobile uses `client_uuid` until upload completes. |
 | `upload_sessions` | Resumable chunked upload bookkeeping. | `completed_at` (nullable). | Server-only. |
+| `recording_jobs` | Durable processing queue with retry schedule and worker lease. | `queued` / `running` / `retry_wait` / `done` / `failed`. | Server-only; claimed with `FOR UPDATE SKIP LOCKED`. |
+| `recording_processing_events` | Append-only operational progress timeline. | `stage` + `progress_percent`. | Server-only metadata; never stores audio or transcript text. |
 | `transcripts` | STT output. | `provider` (stable string — see §10 law #9). | Server-generated; mobile pulls. |
 | `summaries` | Markdown summary. | `pending_review` (legacy) / `approved` (current). | Mobile pulls. |
 | `exercises` | 3 items as JSONB. | `pending_review` / `approved`. | Mobile pulls. |
@@ -296,7 +319,7 @@ append-only — see §10 law #8.
 
 ```
    uploaded
-      │ pipeline starts (jobs_tx.send)
+      │ durable job is queued and claimed
       ▼
    processing
       │
@@ -304,14 +327,17 @@ append-only — see §10 law #8.
       │
       ├── stt produced 0 words ──► failed
       │
-      ├── study generator error ──► failed
+      ├── retryable provider/storage error ──► retry_wait ──► processing
+      │
+      ├── retry budget exhausted / permanent error ──► failed
       │
       └── all good ──► ready
 ```
 
-The pipeline never goes from `failed` back to anything else
-automatically. Only an admin `reprocess` call moves a recording back
-into the queue.
+Retryable failures return to `processing` automatically through the
+durable queue. A terminal `failed` row moves again only through an
+explicit reprocess request. `blocked` is terminal until entitlement is
+restored and the recording is explicitly reprocessed.
 
 ---
 
@@ -349,6 +375,24 @@ no business logic cares which backend is active.
 when the client sends a `Range:` header. The `<audio>` element in
 the admin SPA seeks, so without Range support seeking would
 re-download the entire file on every scrub.
+
+### 7.5 Database/storage namespace binding
+
+The first successful API startup stores the physical storage namespace
+in `app_settings.system_storage_namespace`. R2 identities include the
+account and bucket; local identities include the storage directory.
+Every later startup must match exactly.
+
+`storage::bind_database_namespace` runs before any provider or worker is
+started. A mismatch aborts startup with a precise error. Never bypass,
+delete, or rewrite this setting to make a local test start: using a
+populated R2 database with local storage creates completed database rows
+whose audio exists only on one developer machine.
+
+For an isolated local test, use an isolated database and an isolated
+`STORAGE_DIR`. For a real-provider test, use the database's bound R2
+configuration. R2 SDK failures use debug-formatted errors so status,
+request metadata, and service error details survive into logs.
 
 ---
 
@@ -392,15 +436,42 @@ of audio per day. Fallback: `STT_PROVIDER=local` (faster-whisper
 subprocess, medium model on CPU, ~0.6× real-time). Never delete the
 local path — see §10 law #2.
 
-### 8.3 Silent-recording guard (commit `52c10f6`)
+### 8.3 Durable queue, leases, and progress
+
+Postgres is the queue. `complete_upload` and `reprocess` upsert one
+`recording_jobs` row per recording; an in-memory channel is not an
+acceptable source of truth. Workers claim due work with
+`FOR UPDATE SKIP LOCKED`, write a unique `worker_id`, and renew
+`locked_at` every 30 seconds.
+
+Recovery must run both at startup and periodically. Startup-only
+recovery is incorrect: after a quick process restart, the abandoned
+lease is still fresh at startup and would otherwise remain `running`
+forever. `Pipeline::requeue_stale_jobs` sweeps every 30 seconds and
+reclaims a lease after two minutes.
+
+Every visible stage update changes `recordings.sync_version` and appends
+a `recording_processing_events` row. This lets the phone show actual
+progress and guarantees a later delta replaces stale local state.
+
+Source: `pipeline.rs::{run,recover_jobs,requeue_stale_jobs,
+spawn_job_heartbeat,fail_or_retry_job}` and
+`migrations/008_recording_pipeline_progress.sql`.
+
+### 8.4 Silent-recording guard (commit `52c10f6`)
 
 ```rust
-// pipeline.rs:80-89
+// Pipeline::process
 if transcript.text.split_whitespace().count() == 0 {
-    self.set_status(
+    self.set_terminal_status(
         recording_id,
         "failed",
+        "failed",
+        50,
         Some("no speech detected — the recording is silent (check your microphone)"),
+        "Aucune voix détectée dans cet enregistrement",
+        false,
+        Some("no_speech_detected"),
     ).await?;
     tracing::warn!(%recording_id, "pipeline rejected silent recording");
     return Ok(());
@@ -411,7 +482,7 @@ A silent recording is the user's microphone being broken. We must
 surface this loudly, not produce a study pack from silence. See
 §10 law #4.
 
-### 8.4 Default LLM — `STUDY_GENERATOR=cloudflare-deepseek`
+### 8.5 Default LLM — `STUDY_GENERATOR=cloudflare-deepseek`
 
 `DeepSeekStudyGenerator` (in `deepseek.rs`) hits the Cloudflare
 chat-completions endpoint with the model id read live from
@@ -419,11 +490,14 @@ chat-completions endpoint with the model id read live from
 transcript row is set from `stt.name()` (line 97 of `pipeline.rs`).
 
 Failure semantics (commit `5151578`):
-- HTTP errors → return Err immediately, no retry.
-- JSON parse errors → retry once with a stricter prompt, then fail.
-- No mock fallback. Failures surface as `status='failed'` recordings.
+- HTTP errors → return Err immediately from the provider; the durable
+  pipeline classifies the error and decides whether to schedule a retry.
+- JSON parse errors → retry once inside the provider with a stricter
+  prompt, then return the real error to the durable pipeline.
+- No mock fallback. Failures surface as observable `retry_wait` or
+  terminal `failed` states, never fabricated study content.
 
-### 8.5 Reasoning-token handling
+### 8.6 Reasoning-token handling
 
 Reasoning-capable models (DeepSeek-R1, o1, Claude thinking, etc.)
 wrap their chain-of-thought in `<think>...</think>` blocks before
@@ -436,7 +510,7 @@ After that, the response is either valid JSON (parse) or has JSON
 embedded in prose (`extract_json_object` walks braces, skipping
 those inside strings).
 
-### 8.6 Study pack shape
+### 8.7 Study pack shape
 
 The user requirement: **3 exercises + 10 quiz questions**. The
 prompt enforces these counts. The code truncates excess with a
@@ -448,7 +522,7 @@ The system prompt is in `deepseek.rs:SYSTEM_PROMPT` and the user
 prompt in `build_user_prompt(chapter, transcript)`. Both are
 deterministic strings; testing them in isolation is straightforward.
 
-### 8.7 Free tier math
+### 8.8 Free tier math
 
 - Cloudflare Workers AI free plan: 10,000 neurons/day.
 - Whisper large-v3-turbo: ~46.63 neurons/audio-minute → ~3.5 h/day free.
@@ -466,10 +540,13 @@ calls per day.
 
 `mobile/lib/sync/sync_engine.dart`:
 
-- **Trigger**: `Timer.periodic(45s, ...)` (started in `SyncEngine`
-  constructor). Also triggered immediately when a recording stops
-  (commit `7f2c3f8`).
-- **Push**: query drift for rows with `dirty=1`, POST each to the
+- **Trigger**: one-shot adaptive timer: 45 seconds while idle, 2 seconds
+  while upload/processing work exists. Connectivity, resume, manual,
+  recording-stop, and WorkManager triggers also run a pass.
+- **Concurrency**: a three-minute lease in drift `meta` serializes
+  foreground and background isolates. A concurrent trigger requests
+  one rerun instead of starting a second mutation pass.
+- **Push**: query drift for rows with `pendingSync=true`, POST each to the
   server's upsert endpoint, mark clean on success.
 - **Pull**: GET `/api/sync/...?since=<last_cursor>`, apply each row
   with `InsertMode.insertOrReplace` (NOT `insertIgnore` — see §10
@@ -478,12 +555,15 @@ calls per day.
   the next sync. Acceptable for our use case (study material is
   server-generated; course structure the mobile mostly mirrors).
 
-The engine wraps network failures in retry-with-backoff and a
-"Sync error" UI state surfaced in `home_shell.dart`.
+The engine wraps network failures in persisted retry-with-backoff and a
+"Sync error" UI state surfaced in `home_shell.dart`. A completed-upload
+resume handshake is authoritative: if the API finalized before the app
+persisted its response, the app adopts the returned recording instead
+of uploading duplicate audio.
 
 ---
 
-## 10. ⛔ 10 ANTI-REGRESSION LAWS
+## 10. ⛔ 12 ANTI-REGRESSION LAWS
 
 These are the bugs that have already burned us, plus the structural
 patterns that keep them from happening again. Treat each as a failing
@@ -562,10 +642,12 @@ provider — the silence detection is upstream of provider choice.
 
 ### Law 5 — No mock fallback in the LLM pipeline
 
-The DeepSeek generator must fail loudly when the upstream call fails
-or returns non-JSON. We do NOT silently substitute `MockStudyGenerator`
-output. Recordings that fail go to `status='failed'` with the real
-error message visible to admins and to the mobile app.
+The DeepSeek generator must return the real error when the upstream
+call fails or returns non-JSON. We do NOT silently substitute
+`MockStudyGenerator` output. The durable queue may put a retryable
+failure in `retry_wait`; exhausted or permanent failures go to
+`status='failed'`. Both retain the real error for admins and the mobile
+app.
 
 Source: `deepseek.rs:generate` — single retry on JSON parse failure,
 no retry on HTTP failure, no fallback path. The `MockStudyGenerator`
@@ -616,8 +698,9 @@ top. A `git pull` on a deployed environment must never break
 running migrations.
 
 Source: `backend/migrations/001_init.sql` (initial), `002_*.sql` (auto-
-approve), `003_app_settings.sql` (settings table). All 16 tables
-exist in `001_init.sql`; everything added since is a new file.
+approve), `003_app_settings.sql` (settings table). The first 16 tables
+exist in `001_init.sql`; `app_settings`, `recording_jobs`, and
+`recording_processing_events` were added by later append-only migrations.
 
 ---
 
@@ -656,6 +739,45 @@ the JSON body.
 Source: `deepseek.rs:strip_thinking_and_fences` + the fallback
 `extract_json_object` for prose-embedded JSON. Tests:
 `parses_v4_envelope_with_result_wrapper`, `strip_thinking_drops_reasoning_block`.
+
+---
+
+### Law 11 — Processing jobs are durable leases, not process memory
+
+The canonical job state is `recording_jobs` in Postgres. A worker must
+claim with `FOR UPDATE SKIP LOCKED`, heartbeat while processing, clear
+its lease on completion/failure, and periodically reclaim expired
+`running` rows. Startup-only recovery is forbidden.
+
+Do not replace this with a Tokio channel, fire-and-forget task, or a
+single startup reconciliation. Those approaches lose work or strand a
+fresh lease after a quick restart.
+
+Required regression test: force a job to `running` with `locked_at`
+older than the lease timeout, leave the API running, and prove it moves
+through `queued/running` to `done` without a restart or manual state
+rewrite.
+
+Source: `pipeline.rs:run`, `Pipeline::requeue_stale_jobs`,
+`Pipeline::spawn_job_heartbeat`, and migration `008`.
+
+---
+
+### Law 12 — A database belongs to exactly one storage namespace
+
+Every API startup calls `storage::bind_database_namespace`. The value in
+`app_settings.system_storage_namespace` must match the configured R2
+account/bucket or local directory. A mismatch is a startup failure, not
+a warning and not an automatic migration.
+
+Never point a local-storage API at a populated R2 database. Never remove
+the guard to unblock a test. Create an isolated database instead. The
+fault-injection gate is to bind a database to R2, start once with
+`R2_BUCKET` empty and a local `STORAGE_DIR`, and assert the process exits
+before listening.
+
+Source: `core/src/storage.rs:bind_database_namespace` and
+`api/src/main.rs` immediately after `storage::from_env`.
 
 ---
 
@@ -729,15 +851,36 @@ flutter build apk --debug --dart-define=API_BASE_URL=http://127.0.0.1:7878/api
 ```bash
 # Backend
 cd backend
-cargo test --workspace          # 60+ tests
+cargo test --workspace --all-targets  # currently 83 tests
+cargo fmt --all -- --check
 
 # Mobile
 cd mobile
-flutter test                    # 14 tests
+flutter test                    # currently 66 tests
+flutter analyze
+
+# Admin
+cd admin
+npm run build
 
 # End-to-end smoke
 ./smoke_admin.sh                 # hits the running stack
 ```
+
+For queue/storage changes, the ordinary suites are necessary but not
+sufficient. Also run both fault tests:
+
+1. Inject an expired `running` job lease and prove the live sweeper
+   reaches `done` without restarting the API.
+2. Start an R2-bound database with local storage and prove startup is
+   refused before the listener opens.
+
+For a release candidate, run one explicitly authorized, non-mock pass:
+R2 `get_object` → Cloudflare Whisper → Cloudflare study generator →
+`recordings.ready/100` + `recording_jobs.done`, then manually sync a
+physical phone and verify transcript, summary, cards, exercises, and
+quiz are visible. Logs must name the Cloudflare providers; seeing
+`mock-stt` or `mock-llm` invalidates the result.
 
 ### 11.6 Linting / formatting
 
@@ -754,7 +897,7 @@ Not enforced today (no CI). Recommended pre-commit: `cargo fmt`,
 | R2 bucket | `buddywize-audio` |
 | Postgres (local docker) | `buddywize:buddywize_dev@localhost:15432/buddywize` |
 | Admin login | `admin@buddywize.local` / `admin-buddywize` |
-| GitHub repo | `https://github.com/dexterOuattara/buddy` (private) |
+| GitHub repo | `https://github.com/dexterOuattara/buddyapp` (private) |
 | Mac LAN IP | `192.168.1.x` (DHCP; rotate via `ipconfig getifaddr en0`) |
 | Test rig phone | Redmi Note 11 Pro (`SKCI6TU4XKRCBMTG`, model `2201116TG`) |
 
@@ -795,7 +938,7 @@ Body paragraphs (separated by blank lines) explain the *why*. Avoid
 | A new LLM provider | `backend/crates/buddywize-ai/src/<name>.rs` implementing `StudyGenerator`. Same wiring pattern as STT. |
 | A new admin endpoint | `backend/crates/buddywize-admin/src/lib.rs` (handlers) + `buddywize-api/src/main.rs` (route registration + OpenAPI path). |
 | A new admin UI tab | `admin/src/views/<Name>.svelte` + add to `App.svelte` `tabs` and render switch. |
-| A new env var | `docker-compose.yml` (default) + `.env` (commented placeholder) + `backend/.env.example` (TODO: doesn't exist yet — see §15). |
+| A new env var | `docker-compose.yml` (default) + `.env` (local value) + `backend/.env.example` (documented placeholder). Never commit a real token. |
 | A new database table | `backend/migrations/00X_<name>.sql` (next number). Append only — see law #8. |
 | A new Rust test | Co-located in `mod tests` at the bottom of the file under test. |
 | A new Flutter test | `mobile/test/<feature>_test.dart`. |
@@ -804,12 +947,22 @@ Body paragraphs (separated by blank lines) explain the *why*. Avoid
 
 ## 15. Known gaps / roadmap
 
-- **`.env.example`** — a real example file would speed onboarding. Currently `.env` is `.gitignore`d and new devs reverse-engineer from `docker-compose.yml`. Trivial fix, just hasn't been done.
+- **Root `.env.example`** — `backend/.env.example` exists, but Compose
+  still relies on a gitignored root `.env`. Add a secret-free root
+  example before onboarding another developer.
 - **LLM summarization has no chapter-aware prompt yet.** The user prompt is just the chapter title + transcript. A future improvement: include the previous chapter's summary so the new one has continuity ("continuing from where we left off…").
-- **No retry queue for failed pipeline jobs.** A `status='failed'` recording stays failed until an admin clicks "reprocess". A background sweeper that re-queues old failures would be nice.
+- **R2 upload assembly is in process memory.** A server restart during
+  chunk upload makes the resume handshake return byte zero, so the phone
+  safely retransmits from the beginning. This is correct but inefficient;
+  durable partial-object storage would preserve the byte offset.
+- **Delta pagination is capped at 500 rows per endpoint.** The API returns
+  `has_more`, but every mobile pull path must loop until it is false before
+  persisting the final cursor. Treat this as mandatory before accounts can
+  realistically exceed 500 rows of one entity type.
 - **No AI Gateway / cost tracking.** Each pipeline run logs tokens but doesn't aggregate them. A daily dashboard would help budget.
 - **Cloudflare STT long-audio chunking loses 1-2 words at segment boundaries.** No overlap between segments, no smoothing. Mostly invisible on natural speech but noticeable on tightly-cut dictation. Could fix by overlapping 1 second or by using Whisper's `condition_on_previous_text` parameter with the previous segment's text.
-- **No push notifications.** Sync is 45s polling. WebSockets or FCM would feel snappier on the mobile.
+- **No push notifications.** Sync is adaptive polling (45 seconds idle,
+  2 seconds while recording work is active). FCM could remove the active
+  polling cost and notify a backgrounded phone immediately.
 - **No billing rail.** Trial just expires silently after 7 days. Stripe or IAP integration needed before going paid.
 - **Free tier ceiling.** 3.5 h/day of audio + ~140 LLM calls is the hard cap on free plan. Going past it requires paid Cloudflare or self-hosted inference.
-

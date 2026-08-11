@@ -18,7 +18,7 @@ use buddywize_ai::{
 };
 use buddywize_auth::{AuthState, JwtConfig};
 use buddywize_core::settings::{DbSettingsStore, SettingsCache};
-use buddywize_core::{job_channel, storage};
+use buddywize_core::storage;
 use buddywize_courses::CourseState;
 use buddywize_recordings::RecordingState;
 use sqlx::postgres::PgPoolOptions;
@@ -143,10 +143,14 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://buddywize:buddywize_dev@localhost:5432/buddywize".into());
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let port: u16 = std::env::var("PORT").unwrap_or_else(|_| "7878".into()).parse()?;
+    let port: u16 = std::env::var("PORT")
+        .unwrap_or_else(|_| "7878".into())
+        .parse()?;
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-me".into());
-    let admin_email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@buddywize.local".into());
-    let admin_password = std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "admin-buddywize".into());
+    let admin_email =
+        std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@buddywize.local".into());
+    let admin_password =
+        std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "admin-buddywize".into());
 
     let db = PgPoolOptions::new()
         .max_connections(10)
@@ -161,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Object storage: R2 if `R2_BUCKET` is set, otherwise local filesystem.
     let storage = storage::from_env().await?;
+    storage::bind_database_namespace(&db, storage.as_ref()).await?;
 
     // Speech-to-text provider.
     //   STT_PROVIDER=cloudflare  → Cloudflare Whisper large-v3-turbo (default; fast, GPU-backed)
@@ -201,7 +206,11 @@ async fn main() -> anyhow::Result<()> {
     // Study-material generator. Default is Cloudflare DeepSeek via REST;
     // falls back to the mock template if CF_AI_TOKEN is missing or the
     // upstream call fails.
-    let generator: Arc<dyn buddywize_ai::providers::StudyGenerator> = match std::env::var("STUDY_GENERATOR").as_deref() {
+    let generator: Arc<dyn buddywize_ai::providers::StudyGenerator> = match std::env::var(
+        "STUDY_GENERATOR",
+    )
+    .as_deref()
+    {
         Ok("mock") => {
             tracing::info!("using mock study generator");
             Arc::new(MockStudyGenerator)
@@ -218,33 +227,26 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let (jobs_tx, jobs_rx) = job_channel(100);
-    let pipeline = Pipeline::new(
-        db.clone(),
-        storage.clone(),
-        stt,
-        generator,
-    );
-    tokio::spawn(pipeline.run(jobs_rx));
+    let pipeline = Pipeline::new(db.clone(), storage.clone(), stt, generator);
+    tokio::spawn(pipeline.run());
 
     // Agenda ingestion: photo OCR (Gemma 4) or iCal feed. Mock provider
     // returns canned items for offline dev.
-    let agenda_parser: Arc<dyn AgendaParser> =
-        match std::env::var("AGENDA_PARSER").as_deref() {
-            Ok("mock") => {
-                tracing::info!("using mock agenda parser");
-                Arc::new(buddywize_ai::mock::MockAgendaParser)
-            }
-            _ => {
-                let cfg = CloudflareAgendaConfig::from_env()?;
-                tracing::info!(
-                    account = %cfg.account_id,
-                    model = %cfg.model,
-                    "using Cloudflare Gemma agenda parser"
-                );
-                Arc::new(CloudflareAgendaParser::new(cfg))
-            }
-        };
+    let agenda_parser: Arc<dyn AgendaParser> = match std::env::var("AGENDA_PARSER").as_deref() {
+        Ok("mock") => {
+            tracing::info!("using mock agenda parser");
+            Arc::new(buddywize_ai::mock::MockAgendaParser)
+        }
+        _ => {
+            let cfg = CloudflareAgendaConfig::from_env()?;
+            tracing::info!(
+                account = %cfg.account_id,
+                model = %cfg.model,
+                "using Cloudflare Gemma agenda parser"
+            );
+            Arc::new(CloudflareAgendaParser::new(cfg))
+        }
+    };
 
     let jwt = JwtConfig {
         secret: jwt_secret.clone(),
@@ -252,12 +254,18 @@ async fn main() -> anyhow::Result<()> {
         refresh_ttl_days: 30,
     };
 
-    let auth_state = AuthState { db: db.clone(), jwt };
+    let auth_state = AuthState {
+        db: db.clone(),
+        jwt,
+    };
     let course_state = CourseState {
         db: db.clone(),
         agenda_parser: agenda_parser.clone(),
     };
-    let recording_state = RecordingState { db: db.clone(), storage: storage.clone(), jobs: jobs_tx };
+    let recording_state = RecordingState {
+        db: db.clone(),
+        storage: storage.clone(),
+    };
     let admin_state = AdminState {
         db: db.clone(),
         storage: storage.clone(),
@@ -271,10 +279,9 @@ async fn main() -> anyhow::Result<()> {
         .with_state(sync_state);
 
     // Admin routes additionally require the admin role (runs after require_auth).
-    let admin_router = buddywize_admin::router(admin_state)
-        .layer(axum::middleware::from_fn(
-            buddywize_auth::middleware::require_admin,
-        ));
+    let admin_router = buddywize_admin::router(admin_state).layer(axum::middleware::from_fn(
+        buddywize_auth::middleware::require_admin,
+    ));
 
     // Protected API: everything except register/login/refresh needs a Bearer token.
     let protected = Router::new()

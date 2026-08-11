@@ -71,14 +71,17 @@ impl SettingsStore for DbSettingsStore {
     }
 
     async fn all(&self) -> Result<Vec<AppSetting>, sqlx::Error> {
-        let rows: Vec<(String, String, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT key, value, updated_at FROM app_settings ORDER BY key",
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let rows: Vec<(String, String, DateTime<Utc>)> =
+            sqlx::query_as("SELECT key, value, updated_at FROM app_settings ORDER BY key")
+                .fetch_all(&self.db)
+                .await?;
         Ok(rows
             .into_iter()
-            .map(|(key, value, updated_at)| AppSetting { key, value, updated_at })
+            .map(|(key, value, updated_at)| AppSetting {
+                key,
+                value,
+                updated_at,
+            })
             .collect())
     }
 
@@ -178,7 +181,9 @@ mod tests {
 
     impl InMemoryStore {
         fn new() -> Arc<Self> {
-            Arc::new(Self { inner: RwLock::new(HashMap::new()) })
+            Arc::new(Self {
+                inner: RwLock::new(HashMap::new()),
+            })
         }
     }
 
@@ -206,7 +211,10 @@ mod tests {
             value: &str,
             _updated_by: Option<uuid::Uuid>,
         ) -> Result<(), sqlx::Error> {
-            self.inner.write().await.insert(key.to_string(), value.to_string());
+            self.inner
+                .write()
+                .await
+                .insert(key.to_string(), value.to_string());
             Ok(())
         }
     }
@@ -216,7 +224,10 @@ mod tests {
         let store: Arc<dyn SettingsStore> = InMemoryStore::new();
         store.set("k", "v1", None).await.unwrap();
         let cache = SettingsCache::new(store).await;
-        assert_eq!(cache.get_or_load("k").await.unwrap(), Some("v1".to_string()));
+        assert_eq!(
+            cache.get_or_load("k").await.unwrap(),
+            Some("v1".to_string())
+        );
     }
 
     #[tokio::test]
@@ -227,11 +238,17 @@ mod tests {
 
         // Mutate behind the cache; the cache still has the old value.
         store.set("k", "v2", None).await.unwrap();
-        assert_eq!(cache.get_or_load("k").await.unwrap(), Some("v1".to_string()));
+        assert_eq!(
+            cache.get_or_load("k").await.unwrap(),
+            Some("v1".to_string())
+        );
 
         // After refresh, the new value is visible.
         cache.refresh().await.unwrap();
-        assert_eq!(cache.get_or_load("k").await.unwrap(), Some("v2".to_string()));
+        assert_eq!(
+            cache.get_or_load("k").await.unwrap(),
+            Some("v2".to_string())
+        );
     }
 
     #[tokio::test]
@@ -240,7 +257,10 @@ mod tests {
         let cache = SettingsCache::new(store.clone()).await;
         cache.set("k", "hello", None).await.unwrap();
         // Visible immediately, without an explicit refresh.
-        assert_eq!(cache.get_or_load("k").await.unwrap(), Some("hello".to_string()));
+        assert_eq!(
+            cache.get_or_load("k").await.unwrap(),
+            Some("hello".to_string())
+        );
         // And the underlying store got it too.
         assert_eq!(store.get("k").await.unwrap(), Some("hello".to_string()));
     }

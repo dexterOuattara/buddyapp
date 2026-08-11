@@ -18,6 +18,17 @@ void main() {
       });
 
       await db
+          .into(db.chapters)
+          .insert(
+            ChaptersCompanion.insert(
+              clientUuid: 'chapter-local',
+              serverId: const Value('chapter-server'),
+              lessonClientUuid: 'lesson-local',
+              title: 'Chapitre cumulatif',
+              pendingSync: const Value(false),
+            ),
+          );
+      await db
           .into(db.recordings)
           .insert(
             RecordingsCompanion.insert(
@@ -40,6 +51,13 @@ void main() {
       expect(transcript.segmentsJson, contains('"words"'));
       expect(transcript.segmentsJson, contains('"text":"Bonjour"'));
       expect(transcript.syncVersion, 42);
+
+      final summary = await db.select(db.summaries).getSingle();
+      final exercise = await db.select(db.exercises).getSingle();
+      final quiz = await db.select(db.quizzes).getSingle();
+      expect(summary.generationId, 'generation-server');
+      expect(exercise.generationId, summary.generationId);
+      expect(quiz.generationId, summary.generationId);
     },
   );
 }
@@ -94,9 +112,44 @@ class _TranscriptApi extends ApiClient {
         'sync_version': 42,
       },
     ],
-    'summaries': <dynamic>[],
-    'exercises': <dynamic>[],
-    'quizzes': <dynamic>[],
+    'summaries': [
+      {
+        'id': 'summary-server',
+        'chapter_id': 'chapter-server',
+        'recording_id': 'recording-server',
+        'generation_id': 'generation-server',
+        'content_md': '# Résumé cumulatif',
+        'structured_content': {'session_count': 2},
+        'status': 'approved',
+        'sync_version': 43,
+      },
+    ],
+    'exercises': [
+      {
+        'id': 'exercise-server',
+        'chapter_id': 'chapter-server',
+        'recording_id': 'recording-server',
+        'generation_id': 'generation-server',
+        'items': [
+          {'prompt': 'Exercice cumulatif'},
+        ],
+        'status': 'approved',
+        'sync_version': 44,
+      },
+    ],
+    'quizzes': [
+      {
+        'id': 'quiz-server',
+        'chapter_id': 'chapter-server',
+        'recording_id': 'recording-server',
+        'generation_id': 'generation-server',
+        'questions': [
+          {'prompt': 'Question cumulative'},
+        ],
+        'status': 'approved',
+        'sync_version': 45,
+      },
+    ],
     'cursor': 42,
   };
 

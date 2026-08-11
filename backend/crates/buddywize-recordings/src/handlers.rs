@@ -24,6 +24,17 @@ pub struct RecordingDto {
     pub duration_secs: Option<i32>,
     pub status: String,
     pub error: Option<String>,
+    pub pipeline_stage: String,
+    pub progress_percent: i32,
+    pub stage_current: Option<i32>,
+    pub stage_total: Option<i32>,
+    pub status_message: Option<String>,
+    pub retryable: bool,
+    pub attempt_count: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    pub error_code: Option<String>,
+    pub stage_started_at: DateTime<Utc>,
+    pub last_progress_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub sync_version: i64,
@@ -59,6 +70,13 @@ pub struct UploadSessionDto {
     pub upload_id: Uuid,
     /// Byte offset the client should resume from (0 for a new upload).
     pub offset: u64,
+    /// True when this client UUID was already finalized previously. Clients
+    /// must not send chunks again in that case; `recording` is authoritative.
+    pub completed: bool,
+    /// Existing recording state when `completed` is true. Returning it in the
+    /// resume handshake closes the crash window between server completion and
+    /// the mobile client persisting the response.
+    pub recording: Option<RecordingDto>,
 }
 
 /// Start a resumable upload for a recording. Idempotent on `client_uuid`.
@@ -94,13 +112,36 @@ pub async fn create_upload(
     .fetch_optional(&state.db)
     .await?
     {
-        let offset = state.storage.upload_offset(&existing.path).await.map_err(|e| ApiError::Internal(e.into()))?;
-        return Ok(Json(UploadSessionDto { upload_id: existing.id, offset }));
+        if existing.completed_at.is_some() {
+            let recording =
+                fetch_recording_by_client_uuid(&state, user.sub, existing.client_uuid).await?;
+            return Ok(Json(UploadSessionDto {
+                upload_id: existing.id,
+                offset: existing.received_bytes.max(0) as u64,
+                completed: true,
+                recording: Some(recording),
+            }));
+        }
+        let offset = state
+            .storage
+            .upload_offset(&existing.path)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+        return Ok(Json(UploadSessionDto {
+            upload_id: existing.id,
+            offset,
+            completed: false,
+            recording: None,
+        }));
     }
 
     let id = Uuid::new_v4();
     let key = object_key(&id, body.file_name.as_deref());
-    state.storage.create_upload(&key).await.map_err(|e| ApiError::Internal(e.into()))?;
+    state
+        .storage
+        .create_upload(&key)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     sqlx::query(
         "INSERT INTO upload_sessions (id, user_id, client_uuid, chapter_id, path, duration_secs)
@@ -115,7 +156,12 @@ pub async fn create_upload(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(UploadSessionDto { upload_id: id, offset: 0 }))
+    Ok(Json(UploadSessionDto {
+        upload_id: id,
+        offset: 0,
+        completed: false,
+        recording: None,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,7 +193,10 @@ pub async fn upload_chunk(
         return Err(ApiError::Conflict("upload already completed".into()));
     }
 
-    let chunk = UploadChunk { offset: q.offset, bytes: data.to_vec() };
+    let chunk = UploadChunk {
+        offset: q.offset,
+        bytes: data.to_vec(),
+    };
     let new_offset = state
         .storage
         .append_chunk(&session.path, chunk)
@@ -160,7 +209,12 @@ pub async fn upload_chunk(
         .execute(&state.db)
         .await?;
 
-    Ok(Json(UploadSessionDto { upload_id: id, offset: new_offset }))
+    Ok(Json(UploadSessionDto {
+        upload_id: id,
+        offset: new_offset,
+        completed: false,
+        recording: None,
+    }))
 }
 
 /// Finalize the upload: creates the recording row and enqueues AI processing.
@@ -176,11 +230,39 @@ pub async fn complete_upload(
 ) -> ApiResult<Json<RecordingDto>> {
     let session = load_owned_session(&state, user.sub, id).await?;
     if let Some(_) = session.completed_at {
-        let recording = fetch_recording_by_client_uuid(&state, user.sub, session.client_uuid).await?;
+        // Re-announce the authoritative state through delta sync. Older app
+        // versions ignore the `completed` handshake flag and call this route;
+        // bumping the version guarantees they immediately replace their stale
+        // local "uploading" state with failed/processing/ready as appropriate.
+        sqlx::query(
+            "UPDATE recordings
+                SET updated_at = now(), sync_version = nextval('sync_version_seq')
+              WHERE client_uuid = $1 AND user_id = $2",
+        )
+        .bind(session.client_uuid)
+        .bind(user.sub)
+        .execute(&state.db)
+        .await?;
+        let recording =
+            fetch_recording_by_client_uuid(&state, user.sub, session.client_uuid).await?;
+        if recording.status != "ready" {
+            sqlx::query(
+                "INSERT INTO recording_jobs (recording_id, state)
+                 VALUES ($1, 'queued')
+                 ON CONFLICT (recording_id) DO NOTHING",
+            )
+            .bind(recording.id)
+            .execute(&state.db)
+            .await?;
+        }
         return Ok(Json(recording));
     }
 
-    state.storage.finish_upload(&session.path).await.map_err(|e| ApiError::Internal(e.into()))?;
+    state
+        .storage
+        .finish_upload(&session.path)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     let recording = upsert_recording(&state, &session).await?;
 
@@ -189,10 +271,7 @@ pub async fn complete_upload(
         .execute(&state.db)
         .await?;
 
-    // Kick off the AI pipeline; failures here should not fail the upload.
-    if let Err(e) = state.jobs.send(recording.id).await {
-        tracing::error!(error = %e, recording_id = %recording.id, "failed to enqueue recording");
-    }
+    enqueue_recording_job(&state.db, recording.id).await?;
 
     Ok(Json(recording))
 }
@@ -211,8 +290,13 @@ async fn load_owned_session(
     session.ok_or(ApiError::NotFound)
 }
 
-async fn upsert_recording(state: &RecordingState, session: &UploadSessionRow) -> ApiResult<RecordingDto> {
-    if let Some(existing) = fetch_recording_by_client_uuid_opt(state, session.user_id, session.client_uuid).await? {
+async fn upsert_recording(
+    state: &RecordingState,
+    session: &UploadSessionRow,
+) -> ApiResult<RecordingDto> {
+    if let Some(existing) =
+        fetch_recording_by_client_uuid_opt(state, session.user_id, session.client_uuid).await?
+    {
         return Ok(existing);
     }
     // Persist the storage *key* (backend-agnostic), not an absolute path.
@@ -220,7 +304,11 @@ async fn upsert_recording(state: &RecordingState, session: &UploadSessionRow) ->
         "INSERT INTO recordings
             (user_id, chapter_id, client_uuid, storage_path, duration_secs, status)
          VALUES ($1, $2, $3, $4, $5, 'uploaded')
-         RETURNING id, chapter_id, client_uuid, duration_secs, status, error, created_at, updated_at, sync_version",
+         RETURNING id, chapter_id, client_uuid, duration_secs, status, error,
+                   pipeline_stage, progress_percent, stage_current, stage_total,
+                   status_message, retryable, attempt_count, next_retry_at,
+                   error_code, stage_started_at, last_progress_at,
+                   created_at, updated_at, sync_version",
     )
     .bind(session.user_id)
     .bind(session.chapter_id)
@@ -248,7 +336,11 @@ async fn fetch_recording_by_client_uuid_opt(
     client_uuid: Uuid,
 ) -> ApiResult<Option<RecordingDto>> {
     let row: Option<RecordingDto> = sqlx::query_as(
-        "SELECT id, chapter_id, client_uuid, duration_secs, status, error, created_at, updated_at, sync_version
+        "SELECT id, chapter_id, client_uuid, duration_secs, status, error,
+                pipeline_stage, progress_percent, stage_current, stage_total,
+                status_message, retryable, attempt_count, next_retry_at,
+                error_code, stage_started_at, last_progress_at,
+                created_at, updated_at, sync_version
            FROM recordings WHERE client_uuid = $1 AND user_id = $2",
     )
     .bind(client_uuid)
@@ -280,7 +372,11 @@ pub async fn list_recordings(
     Query(q): Query<SinceQuery>,
 ) -> ApiResult<Json<DeltaResponse<RecordingDto>>> {
     let rows: Vec<RecordingDto> = sqlx::query_as(
-        "SELECT id, chapter_id, client_uuid, duration_secs, status, error, created_at, updated_at, sync_version
+        "SELECT id, chapter_id, client_uuid, duration_secs, status, error,
+                pipeline_stage, progress_percent, stage_current, stage_total,
+                status_message, retryable, attempt_count, next_retry_at,
+                error_code, stage_started_at, last_progress_at,
+                created_at, updated_at, sync_version
            FROM recordings
           WHERE user_id = $1 AND ($2::bigint IS NULL OR sync_version > $2)
           ORDER BY sync_version
@@ -291,9 +387,17 @@ pub async fn list_recordings(
     .fetch_all(&state.db)
     .await?;
 
-    let cursor = rows.iter().map(|r| r.sync_version).max().unwrap_or(q.since.unwrap_or(0));
+    let cursor = rows
+        .iter()
+        .map(|r| r.sync_version)
+        .max()
+        .unwrap_or(q.since.unwrap_or(0));
     let has_more = rows.len() >= 500;
-    Ok(Json(DeltaResponse { items: rows, cursor, has_more }))
+    Ok(Json(DeltaResponse {
+        items: rows,
+        cursor,
+        has_more,
+    }))
 }
 
 // ------------------------------------------------------------------ reprocess
@@ -323,7 +427,11 @@ pub async fn reprocess(
     }
 
     let recording: Option<RecordingDto> = sqlx::query_as(
-        "SELECT id, chapter_id, client_uuid, duration_secs, status, error, created_at, updated_at, sync_version
+        "SELECT id, chapter_id, client_uuid, duration_secs, status, error,
+                pipeline_stage, progress_percent, stage_current, stage_total,
+                status_message, retryable, attempt_count, next_retry_at,
+                error_code, stage_started_at, last_progress_at,
+                created_at, updated_at, sync_version
            FROM recordings WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
@@ -332,11 +440,44 @@ pub async fn reprocess(
     .await?;
     let recording = recording.ok_or(ApiError::NotFound)?;
 
-    state.jobs.send(recording.id).await.map_err(|e| ApiError::Internal(e.into()))?;
+    enqueue_recording_job(&state.db, recording.id).await?;
 
     Ok(Json(ReprocessResponse {
         recording_id: recording.id,
         status: "queued".to_string(),
         message: "AI processing queued".to_string(),
     }))
+}
+
+/// Durable idempotent enqueue. Reprocessing a completed/failed recording
+/// revives the same queue row instead of creating parallel AI work.
+async fn enqueue_recording_job(db: &sqlx::PgPool, recording_id: Uuid) -> ApiResult<()> {
+    let mut tx = db.begin().await?;
+    sqlx::query(
+        "INSERT INTO recording_jobs (recording_id, state, next_attempt_at, updated_at)
+         VALUES ($1, 'queued', now(), now())
+         ON CONFLICT (recording_id) DO UPDATE
+             SET state = 'queued', next_attempt_at = now(), locked_at = NULL,
+                 worker_id = NULL, last_error = NULL, updated_at = now()",
+    )
+    .bind(recording_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE recordings
+            SET status = 'uploaded', pipeline_stage = 'queued',
+                progress_percent = 40,
+                stage_current = NULL, stage_total = NULL,
+                status_message = 'Traitement ajouté à la file',
+                retryable = TRUE, next_retry_at = NULL, error = NULL,
+                error_code = NULL, stage_started_at = now(),
+                last_progress_at = now(), updated_at = now(),
+                sync_version = nextval('sync_version_seq')
+          WHERE id = $1",
+    )
+    .bind(recording_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
 }

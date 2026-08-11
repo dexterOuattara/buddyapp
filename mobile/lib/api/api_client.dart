@@ -106,6 +106,7 @@ class ApiClient {
     final uri = _u('recordings/uploads/$uploadId/chunk', {'offset': '$offset'});
     return _withRefresh(
       () => _client.put(uri, headers: _authHeaders, body: bytes),
+      timeout: const Duration(seconds: 60),
     );
   }
 
@@ -151,7 +152,7 @@ class ApiClient {
         );
       final streamed = await req.send();
       return http.Response.fromStream(streamed);
-    });
+    }, timeout: const Duration(minutes: 2));
     final list = _decodeList(resp);
     return list
         .cast<Map<String, dynamic>>()
@@ -207,13 +208,14 @@ class ApiClient {
   /// (e.g. multipart endpoints that must stream the body back) don't have
   /// to re-do the decode.
   Future<http.Response> _withRefreshRaw(
-    Future<http.Response> Function() send,
-  ) async {
-    final first = await send();
+    Future<http.Response> Function() send, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final first = await send().timeout(timeout);
     if (first.statusCode != 401) return first;
 
     await _ensureRefresh();
-    final retried = await send();
+    final retried = await send().timeout(timeout);
     if (retried.statusCode == 401) {
       clearSession();
       throw const ApiAuthException();
@@ -227,13 +229,14 @@ class ApiClient {
   /// Same as [_withRefreshRaw] but decodes the response body. Use this
   /// for JSON endpoints that don't need streaming.
   Future<Map<String, dynamic>> _withRefresh(
-    Future<http.Response> Function() send,
-  ) async {
-    final first = await send();
+    Future<http.Response> Function() send, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final first = await send().timeout(timeout);
     if (first.statusCode != 401) return _decode(first);
 
     await _ensureRefresh();
-    final retried = await send();
+    final retried = await send().timeout(timeout);
     if (retried.statusCode == 401) {
       clearSession();
       throw const ApiAuthException();
@@ -248,11 +251,13 @@ class ApiClient {
   Future<void> _doRefresh() async {
     if (refreshToken == null) throw const ApiAuthException();
     try {
-      final res = await _client.post(
-        _u('auth/refresh'),
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': refreshToken}),
-      );
+      final res = await _client
+          .post(
+            _u('auth/refresh'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) {
         clearSession();
         throw const ApiAuthException();
